@@ -87,7 +87,7 @@ send_offline_message(From ,To ,Packet )->
 	HTTPTarget = string:concat(HTTPServer,HTTPService),
 	Msg = get_text_message_from_packet( Packet ),
 	{Service,Method,FN,TN,MSG} = {list_to_binary("service.uri.pet_user"),list_to_binary("pushMsgApn"),list_to_binary(FromUser),list_to_binary(ToUser),list_to_binary(Msg)},
-	ParamObj={obj,[ {"service",Service},{"method",Method},{"params",{obj,[{"fromname",FN},{"toname",TN},{"msg",MSG}]} } ]},
+	ParamObj={obj,[ {"service",Service},{"method",Method},{"channel",list_to_binary("9")},{"params",{obj,[{"fromname",FN},{"toname",TN},{"msg",MSG}]} } ]},
 	Form = "body="++rfc4627:encode(ParamObj),
 	?INFO_MSG("MMMMMMMMMMMMMMMMM===Form=~p~n",[Form]),
 	case httpc:request(post,{ HTTPTarget ,[], ?HTTP_HEAD , Form },[],[] ) of   
