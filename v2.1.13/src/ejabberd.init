@@ -16,7 +16,7 @@
 
 set -o errexit
 
-DIR=/app/ejabberd/sbin
+DIR=/app/ejabberd/runtime/sbin
 CTL="$DIR"/ejabberdctl
 USER=liangc
 
