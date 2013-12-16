@@ -132,7 +132,7 @@ sync_user(Domain,FromUser,ToUser,SType) ->
 	HTTPService = ejabberd_config:get_local_option({http_server_service_client,Domain}),
 	HTTPTarget = string:concat(HTTPServer,HTTPService),
 	{Service,Method,Channel} = {list_to_binary("service.uri.pet_user"),list_to_binary("addOrRemoveFriend"),list_to_binary("9")},
-	{AID,BID,ST} = {list_to_binary(FromUser),list_to_binary(ToUser),list_to_binary(atom_to_list(SType))},
+	{BID,AID,ST} = {list_to_binary(FromUser),list_to_binary(ToUser),list_to_binary(atom_to_list(SType))},
 	%% 2013-10-22 : 新的请求协议如下，此处不必关心，success=true 即成功
 	%% INPUT {"SubscriptionType":"", "aId":"", "bId":""}
 	%% OUTPUT {"success":true,"entity":"OK" }
