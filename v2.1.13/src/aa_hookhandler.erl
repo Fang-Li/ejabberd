@@ -114,7 +114,10 @@ roster_in_subscription_handler(Acc, User, Server, JID, SubscriptionType, Reason)
 	?INFO_MSG("~n~p; Acc=~p ; User=~p~n Server=~p ; JID=~p ; SubscriptionType=~p ; Reason=~p~n ", [liangchuan_debug,Acc, User, Server, JID, SubscriptionType, Reason] ),
 	{jid,ToUser,Domain,_,_,_,_}=JID,
 	?INFO_MSG("XXXXXXXX===~p",[SubscriptionType]),
-	case SubscriptionType of subscribed -> 
+	case SubscriptionType of 
+		subscribe -> 
+			sync_user(Domain,User,ToUser,SubscriptionType);
+		subscribed -> 
 			sync_user(Domain,User,ToUser,SubscriptionType);
 		unsubscribed ->
 			sync_user(Domain,User,ToUser,SubscriptionType);
