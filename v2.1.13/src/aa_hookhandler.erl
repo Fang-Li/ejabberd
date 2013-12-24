@@ -58,28 +58,23 @@ offline_message_hook_handler(From, To, Packet) ->
 	?INFO_MSG("FFFFFFFFFFFFFFFFF===From=~p~nTo=~p~nPacket=~p~n",[From, To, Packet]),
 	{xmlelement,"message",Header,_ } = Packet,
 	%%这里只推送 msgtype=normalchat 的消息，以下是判断
-	lists:foreach(
-		fun(K) ->
-			{Key,Value}=K,
-			case Key of 
-				"msgtype" -> 
-					case Value of 
-						"normalchat" ->
-							send_offline_message(From ,To ,Packet,Value );
-						_ ->
-							?INFO_MSG("FFFFFFFFFFFFFFFFF=NOT_SEND=From=~p~nTo=~p~nPacket=~p~n",[From, To, Packet])
-					end;
-				"fileType" ->
-					case lists:member(Value,["img","text","audio"]) of 
-						true ->
-							send_offline_message(From ,To ,Packet,Value );
-						_ ->
-							?INFO_MSG("FFFFFFFFFFFFFFFFF=NOT_SEND=From=~p~nTo=~p~nPacket=~p~n",[From, To, Packet])
-					end;
-				_ ->
-					ok
-			end
-		end,Header),
+	try
+		D = dict:from_list(Header),
+		V = dict:fetch("msgtype", D),
+		case V of "normalchat" ->
+			offline_message_hook_handler(From, To, Packet,D )
+		end
+	catch
+		_:_ -> ok
+	end.
+
+offline_message_hook_handler(From, To, Packet,D ) ->
+	try
+		V = dict:fetch("fileType", D),
+		send_offline_message(From ,To ,Packet,V )
+	catch
+		_:_ -> send_offline_message(From ,To ,Packet,"" )
+	end,
 	ok.
 
 %% 将 Packet 中的 Text 消息 Post 到指定的 Http 服务
