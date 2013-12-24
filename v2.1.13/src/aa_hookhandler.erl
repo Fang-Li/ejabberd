@@ -65,7 +65,14 @@ offline_message_hook_handler(From, To, Packet) ->
 				"msgtype" -> 
 					case Value of 
 						"normalchat" ->
-							send_offline_message(From ,To ,Packet );
+							send_offline_message(From ,To ,Packet,Value );
+						_ ->
+							?INFO_MSG("FFFFFFFFFFFFFFFFF=NOT_SEND=From=~p~nTo=~p~nPacket=~p~n",[From, To, Packet])
+					end;
+				"fileType" ->
+					case lists:member(Value,["img","text","audio"]) of 
+						true ->
+							send_offline_message(From ,To ,Packet,Value );
 						_ ->
 							?INFO_MSG("FFFFFFFFFFFFFFFFF=NOT_SEND=From=~p~nTo=~p~nPacket=~p~n",[From, To, Packet])
 					end;
@@ -77,7 +84,7 @@ offline_message_hook_handler(From, To, Packet) ->
 
 %% 将 Packet 中的 Text 消息 Post 到指定的 Http 服务
 %% IOS 消息推送功能
-send_offline_message(From ,To ,Packet )->
+send_offline_message(From ,To ,Packet,Type )->
 	{jid,FromUser,Domain,_,_,_,_} = From ,	
 	{jid,ToUser,_,_,_,_,_} = To ,	
 	%% 取自配置文件 ejabberd.cfg
@@ -86,8 +93,8 @@ send_offline_message(From ,To ,Packet )->
  	HTTPService = ejabberd_config:get_local_option({http_server_service_client,Domain}),
 	HTTPTarget = string:concat(HTTPServer,HTTPService),
 	Msg = get_text_message_from_packet( Packet ),
-	{Service,Method,FN,TN,MSG} = {list_to_binary("service.uri.pet_user"),list_to_binary("pushMsgApn"),list_to_binary(FromUser),list_to_binary(ToUser),list_to_binary(Msg)},
-	ParamObj={obj,[ {"service",Service},{"method",Method},{"channel",list_to_binary("9")},{"params",{obj,[{"fromname",FN},{"toname",TN},{"msg",MSG}]} } ]},
+	{Service,Method,FN,TN,MSG,T} = {list_to_binary("service.uri.pet_user"),list_to_binary("pushMsgApn"),list_to_binary(FromUser),list_to_binary(ToUser),list_to_binary(Msg),list_to_binary(Type)},
+	ParamObj={obj,[ {"service",Service},{"method",Method},{"channel",list_to_binary("9")},{"params",{obj,[{"fromname",FN},{"toname",TN},{"msg",MSG},{"type",T}]} } ]},
 	Form = "body="++rfc4627:encode(ParamObj),
 	?INFO_MSG("MMMMMMMMMMMMMMMMM===Form=~p~n",[Form]),
 	case httpc:request(post,{ HTTPTarget ,[], ?HTTP_HEAD , Form },[],[] ) of   
@@ -114,14 +121,10 @@ roster_in_subscription_handler(Acc, User, Server, JID, SubscriptionType, Reason)
 	?INFO_MSG("~n~p; Acc=~p ; User=~p~n Server=~p ; JID=~p ; SubscriptionType=~p ; Reason=~p~n ", [liangchuan_debug,Acc, User, Server, JID, SubscriptionType, Reason] ),
 	{jid,ToUser,Domain,_,_,_,_}=JID,
 	?INFO_MSG("XXXXXXXX===~p",[SubscriptionType]),
-	case SubscriptionType of 
-		subscribe -> 
+	case lists:member(SubscriptionType,[subscribe,subscribed,unsubscribed]) of 
+		true -> 
 			sync_user(Domain,User,ToUser,SubscriptionType);
-		subscribed -> 
-			sync_user(Domain,User,ToUser,SubscriptionType);
-		unsubscribed ->
-			sync_user(Domain,User,ToUser,SubscriptionType);
-		_ -> 
+		_ ->
 			ok
 	end,
 	true.
