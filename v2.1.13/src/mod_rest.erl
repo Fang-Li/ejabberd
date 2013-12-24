@@ -39,19 +39,17 @@
 start(_Host, _Opts) ->
     ?DEBUG("Starting: ~p ~p", [_Host, _Opts]),
     RESTSupervisor = {
-      ejabberd_mod_rest_sup, {
-	ejabberd_tmp_sup, start_link,
-	[ejabberd_mod_rest_sup, ejabberd_mod_rest]
-       },
-      permanent,
-      infinity,
-      supervisor,
-      [ejabberd_tmp_sup]
-     },
+    	ejabberd_mod_rest_sup, 
+		{ejabberd_tmp_sup, start_link,[ejabberd_mod_rest_sup, ejabberd_mod_rest]},
+    	permanent,
+    	infinity,
+    	supervisor,
+    	[ejabberd_tmp_sup]
+    },
     case supervisor:start_child(ejabberd_sup, RESTSupervisor) of
-	{ok, _Pid} -> ok;
-	{ok, _Pid, _Info} -> ok;
-	{error, Error } -> {'EXIT', {start_child_error, Error}}
+		{ok, _Pid} -> ok;
+		{ok, _Pid, _Info} -> ok;
+		{error, Error } -> {'EXIT', {start_child_error, Error}}
     end.
 
 stop(_Host) ->
@@ -61,10 +59,7 @@ stop(_Host) ->
 	    {'EXIT', {terminate_child_error, Error}}
     end.
 
-process([], #request{method = 'POST',
-		     data = Data,
-		     ip = Ip
-		    }) ->
+process( [], #request{method = 'POST',data = Data,ip = Ip} ) ->
     Stanza = xml_stream:parse_element(Data),
     From = jlib:string_to_jid(xml:get_tag_attr_s("from", Stanza)),
     To = jlib:string_to_jid(xml:get_tag_attr_s("to", Stanza)),
@@ -74,14 +69,14 @@ process([], #request{method = 'POST',
 	       jlib:jid_to_string(To),
 	       Stanza]),
     try
-	{xmlelement, "message", _Attrs, _Kids} = Stanza,
-	case ejabberd_router:route(From, To, Stanza) of
-	    ok -> {200, [], "Ok"};
-	    _ -> {500, [], "Error"}
-	end
+		{xmlelement, "message", _Attrs, _Kids} = Stanza,
+		case ejabberd_router:route(From, To, Stanza) of
+		    ok -> {200, [], "Ok"};
+		    _ -> {500, [], "Error"}
+		end
     catch
-	error:{badmatch, _} -> {406, [], "Error: can only accept <message/>"};
-	  error:{Reason, _} -> {500, [], "Error: " ++ atom_to_list(Reason)}
+		error:{badmatch, _} -> {406, [], "Error: can only accept <message/>"};
+		error:{Reason, _} -> {500, [], "Error: " ++ atom_to_list(Reason)}
     end;
 process(_Path, _Request) ->
     ?DEBUG("Got request to ~p: ~p", [_Path, _Request]),
