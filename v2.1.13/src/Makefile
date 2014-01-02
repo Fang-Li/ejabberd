@@ -7,10 +7,10 @@ LDFLAGS =
 LIBS = 
 
 EXPAT_CFLAGS = 
-ERLANG_CFLAGS= -I/app/erlang/lib/erlang/lib/erl_interface-3.7.14/include -I/app/erlang/lib/erlang/usr/include
+ERLANG_CFLAGS= -I/app/erlang-otp/lib/erlang/lib/erl_interface-3.7.13/include -I/app/erlang-otp/lib/erlang/usr/include
 
 EXPAT_LIBS =  -lexpat
-ERLANG_LIBS = -L/app/erlang/lib/erlang/lib/erl_interface-3.7.14/lib -lerl_interface -lei
+ERLANG_LIBS = -L/app/erlang-otp/lib/erlang/lib/erl_interface-3.7.13/lib -lerl_interface -lei
 
 ASN_FLAGS = -bber_bin +der +compact_bit_string +optimize +noobj
 
@@ -77,7 +77,7 @@ endif
 prefix = /app/ejabberd/runtime
 exec_prefix = ${prefix}
 
-SUBDIRS = mod_irc mod_pubsub mod_muc mod_proxy65 eldap  web stringprep stun tls odbc ejabberd_zlib
+SUBDIRS = mod_irc mod_pubsub mod_muc mod_proxy65 eldap  web stringprep stun tls  ejabberd_zlib
 ERLSHLIBS += expat_erl.so
 ERLBEHAVS = cyrsasl.erl gen_mod.erl p1_fsm.erl
 SOURCES_ALL = $(wildcard *.erl)
@@ -150,7 +150,7 @@ $(BEAMS): $(ERLBEHAVBEAMS)
 all-recursive: $(ERLBEHAVBEAMS)
 
 %.beam:       %.erl
-	/app/erlang/bin/erlc -W $(EFLAGS) $<
+	/app/erlang-otp/bin/erlc -W $(EFLAGS) $<
 
 
 all-recursive install-recursive uninstall-recursive \
@@ -164,8 +164,8 @@ mostlyclean-recursive maintainer-clean-recursive:
 
 
 %.hrl: %.asn1
-	/app/erlang/bin/erlc $(ASN_FLAGS) $<
-	/app/erlang/bin/erlc -W $(EFLAGS) $*.erl
+	/app/erlang-otp/bin/erlc $(ASN_FLAGS) $<
+	/app/erlang-otp/bin/erlc -W $(EFLAGS) $*.erl
 
 $(ERLSHLIBS):	%.so:	%.c
 	$(CC) $(CFLAGS) $(LDFLAGS) $(LIBS) \
@@ -193,7 +193,7 @@ install: all
 		-e "s*@SYSCONFDIR@*${prefix}/etc*" \
 		-e "s*@LOCALSTATEDIR@*${prefix}/var*" \
 		-e "s*@DOCDIR@*${datarootdir}/doc/${PACKAGE_TARNAME}*" \
-		-e "s*@erl@*/app/erlang/bin/erl*" ejabberdctl.template \
+		-e "s*@erl@*/app/erlang-otp/bin/erl*" ejabberdctl.template \
 		> ejabberdctl.example
 	[ -f $(ETCDIR)/ejabberdctl.cfg ] \
 		&& install -b -m 640 $(G_USER) ejabberdctl.cfg.example $(ETCDIR)/ejabberdctl.cfg-new \

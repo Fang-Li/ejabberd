@@ -143,7 +143,9 @@
 		ejabberd_offline,
 		random_generator,
 		aa_hookhandler,
-		aa_hookhandler_sup
+		aa_hookhandler_sup,
+		aa_http,
+		aa_http_sup
   ]},
   {applications, [kernel, stdlib]},
   {env, []},
