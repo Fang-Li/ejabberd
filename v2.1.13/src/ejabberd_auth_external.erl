@@ -136,8 +136,10 @@ is_user_exists(User, Server) ->
 	%% INPUT {"username":"xxx"}
 	%% OUTPUT {"success":true,"entity":true}
 	UID = list_to_binary(User),
+	%% 2014-01-22 : 回调时增加域名和用户名
+	DOMAIN = list_to_binary(Server),
 	{Service,Method,Channel} = {list_to_binary("service.uri.pet_sso"),list_to_binary("isUsernameInuse"),list_to_binary("9")},
-	PostBody = {obj,[{"service",Service},{"method",Method},{"channel",Channel},{"params",{obj,[{"username",UID}]}}]},	
+	PostBody = {obj,[{"service",Service},{"method",Method},{"channel",Channel},{"params",{obj,[{"username",UID},{"domain",DOMAIN}]}}]},	
 	Form = "body="++rfc4627:encode(PostBody),
 	?INFO_MSG("##########################~p~n HTTP_TARGET=~p~nHTTP_PARAM=~p~n",[is_user_exists,HTTPTarget,Form]),
 	case httpc:request(post,{HTTPTarget,[],HTTPHead, Form},[],[]) of   
@@ -205,8 +207,11 @@ check_password_extauth(User, Server, Password) ->
 	%% INPUT {"service":"service.uri.pet_sso","method":"token","channel":"9","token":PWD}
 	%% OUTPUT {"success":true,"entity":{}}
 	{PWD} = {list_to_binary(Password)},
+	%% 2014-01-22 : 回调时增加域名和用户名
+	UID = list_to_binary(User),
+	DOMAIN = list_to_binary(Server),
 	{Service,Method,Channel} = {list_to_binary("service.uri.pet_sso"),list_to_binary("token"),list_to_binary("9")},
-	PostBody = {obj,[{"service",Service},{"method",Method},{"channel",Channel},{"token",PWD}]},	
+	PostBody = {obj,[{"service",Service},{"method",Method},{"channel",Channel},{"token",PWD},{"params",{obj,[{"username",UID},{"domain",DOMAIN}]}} ]},	
 	Form = "body="++rfc4627:encode(PostBody),
 	?INFO_MSG("##########################~p~nHTTP_TARGET=~p~nFORM=~p~n",[check_password_extauth,HTTPTarget,Form]),
     	case httpc:request(post,{HTTPTarget,[],HTTPHead, Form},[],[]) of   
