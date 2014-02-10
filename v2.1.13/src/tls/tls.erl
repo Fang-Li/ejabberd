@@ -189,50 +189,61 @@ recv_data(TLSSock, Packet, Length) ->
     end.
 
 recv_data1(#tlssock{tcpsock = TCPSocket, tlsport = Port}, Packet, Length) ->
+	PortInfo = erlang:port_info(Port),
+	?DEBUG("tls:recv_data1/3 ====>: PortInfo=~p ; Packet=~p~n", [PortInfo,Packet]),
+	%% name = tls_drv
     case port_control(Port, ?SET_ENCRYPTED_INPUT, Packet) of
-	<<0>> ->
-	    case port_control(Port, ?GET_DECRYPTED_INPUT, <<Length:32>>) of
-		<<0, In/binary>> ->
-		    case port_control(Port, ?GET_ENCRYPTED_OUTPUT, []) of
-			<<0, Out/binary>> ->
-			    case gen_tcp:send(TCPSocket, Out) of
-				ok ->
-				    %?PRINT("IN: ~p~n", [{TCPSocket, binary_to_list(In)}]),
-				    {ok, In};
-				Error ->
-				    Error
-			    end;
-			<<1, Error/binary>> ->
-			    {error, binary_to_list(Error)}
+		<<0>> ->
+		    case port_control(Port, ?GET_DECRYPTED_INPUT, <<Length:32>>) of
+				<<0, In/binary>> ->
+				    case port_control(Port, ?GET_ENCRYPTED_OUTPUT, []) of
+						<<0, Out/binary>> ->
+							?DEBUG("tls:recv_data1/3 ====>: IN=~p ; OUT=~p~n", [ binary_to_list(In),binary_to_list(Out) ]),
+						    case gen_tcp:send(TCPSocket, Out) of
+								ok ->
+								    %?PRINT("IN: ~p~n", [{TCPSocket, binary_to_list(In)}]),
+								    {ok, In};
+								Error ->
+								    Error
+						    end;
+						<<1, Error/binary>> ->
+						    {error, binary_to_list(Error)}
+				    end;
+				<<1, Error/binary>> ->
+				    {error, binary_to_list(Error)}
 		    end;
 		<<1, Error/binary>> ->
 		    {error, binary_to_list(Error)}
-	    end;
-	<<1, Error/binary>> ->
-	    {error, binary_to_list(Error)}
     end.
 
 send(#tlssock{tcpsock = TCPSocket, tlsport = Port} = TLSSock, Packet) ->
 	
 	case port_control(Port, ?SET_DECRYPTED_OUTPUT, Packet) of
-	<<0>> ->
-	    %?PRINT("OUT: ~p~n", [{TCPSocket, lists:flatten(Packet)}]),
-	    case port_control(Port, ?GET_ENCRYPTED_OUTPUT, []) of
-		<<0, Out/binary>> ->
-		    gen_tcp:send(TCPSocket, Out);
+		<<0>> ->
+			?DEBUG("xxxxxx tls:send :::> ~p~n",[<<0>>]),
+	    		%?PRINT("OUT: ~p~n", [{TCPSocket, lists:flatten(Packet)}]),
+	    		case port_control(Port, ?GET_ENCRYPTED_OUTPUT, []) of
+				<<0, Out/binary>> ->
+					?DEBUG("xxxxxx tls:send :::> gen_tcp:send :::> ~p~n",[<<0>>]),
+					?DEBUG("xxxxxx tls:send :::> gen_tcp:send :::> Out=~p~n",[Out]),
+		    			R = gen_tcp:send(TCPSocket, Out),
+					?DEBUG("xxxxxx tls:send :::> gen_tcp:send :::> R=~p~n",[R]);
+				<<1, Error/binary>> ->
+					?DEBUG("xxxxxx tls:send :::> gen_tcp:send :::> ~p ; Error=~p~n",[<<1>>,Error]),
+		    			{error, binary_to_list(Error)}
+	    		end;
 		<<1, Error/binary>> ->
-		    {error, binary_to_list(Error)}
-	    end;
-	<<1, Error/binary>> ->
-	    {error, binary_to_list(Error)};
-	<<2>> -> % Dirty hack
-	    receive
-		{timeout, _Timer, _} ->
-		    {error, timeout}
-	    after 100 ->
-		    send(TLSSock, Packet)
-	    end
-    end.
+			?DEBUG("xxxxxx tls:send :::> ~p~n",[<<1>>]),
+	    		{error, binary_to_list(Error)};
+		<<2>> -> % Dirty hack
+			?DEBUG("xxxxxx tls:send :::> ~p~n",[<<2>>]),
+	    		receive
+				{timeout, _Timer, _} ->
+		    			{error, timeout}
+	    		after 100 ->
+		    		send(TLSSock, Packet)
+	    		end
+    	end.
 
 
 setopts(#tlssock{tcpsock = TCPSocket}, Opts) ->

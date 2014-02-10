@@ -171,13 +171,14 @@ handle_call(reset_stream, _From,
     Reply = ok,
     {reply, Reply, State#state{xml_stream_state = NewXMLStreamState},
      ?HIBERNATE_TIMEOUT};
+
 handle_call({become_controller, C2SPid}, _From, State) ->
-    XMLStreamState = xml_stream:new(C2SPid, State#state.max_stanza_size),
-    NewState = State#state{c2s_pid = C2SPid,
-			   xml_stream_state = XMLStreamState},
-    activate_socket(NewState),
-    Reply = ok,
-    {reply, Reply, NewState, ?HIBERNATE_TIMEOUT};
+	XMLStreamState = xml_stream:new(C2SPid, State#state.max_stanza_size),
+	NewState = State#state{c2s_pid = C2SPid,xml_stream_state = XMLStreamState},
+	activate_socket(NewState),
+	Reply = ok,
+	{reply, Reply, NewState, ?HIBERNATE_TIMEOUT};
+
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State, ?HIBERNATE_TIMEOUT}.
@@ -202,30 +203,30 @@ handle_cast(_Msg, State) ->
 %%                                       {stop, Reason, State}
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
-handle_info({Tag, _TCPSocket, Data},
-	    #state{socket = Socket,
-		   sock_mod = SockMod} = State)
-  when (Tag == tcp) or (Tag == ssl) or (Tag == ejabberd_xml) ->
-    case SockMod of
-	tls ->
-	    case tls:recv_data(Socket, Data) of
-		{ok, TLSData} ->
-		    {noreply, process_data(TLSData, State),
-		     ?HIBERNATE_TIMEOUT};
-		{error, _Reason} ->
-		    {stop, normal, State}
-	    end;
-	ejabberd_zlib ->
-	    case ejabberd_zlib:recv_data(Socket, Data) of
-		{ok, ZlibData} ->
-		    {noreply, process_data(ZlibData, State),
-		     ?HIBERNATE_TIMEOUT};
-		{error, _Reason} ->
-		    {stop, normal, State}
-	    end;
-	_ ->
-	    {noreply, process_data(Data, State), ?HIBERNATE_TIMEOUT}
+handle_info( {Tag, _TCPSocket, Data}, #state{socket = Socket, sock_mod = SockMod} = State ) 
+	when (Tag == tcp) or (Tag == ssl) or (Tag == ejabberd_xml) ->
+	?DEBUG("[Track:ejabberd_receiver:1001]:::::::> Tag=~p, _TCPSocket=~p, Data=~p ,State=~p",[Tag, _TCPSocket, Data, State]),
+	case SockMod of
+		tls ->
+		    case tls:recv_data(Socket, Data) of
+				{ok, TLSData} ->
+					?DEBUG("[Track:ejabberd_receiver:1002]:::::::> (OK) TLSData=~p",[TLSData]),
+				    {noreply, process_data(TLSData, State),?HIBERNATE_TIMEOUT};
+				{error, _Reason} ->
+				    ?DEBUG("[Track:ejabberd_receiver:1002]:::::::> (ERROR) _Reason=~p",[_Reason]),
+					{stop, normal, State}
+		    end;
+		ejabberd_zlib ->
+		    case ejabberd_zlib:recv_data(Socket, Data) of
+				{ok, ZlibData} ->
+				    {noreply, process_data(ZlibData, State),?HIBERNATE_TIMEOUT};
+				{error, _Reason} ->
+				    {stop, normal, State}
+		    end;
+		_ ->
+	    	{noreply, process_data(Data, State), ?HIBERNATE_TIMEOUT}
     end;
+
 handle_info({Tag, _TCPSocket}, State)
   when (Tag == tcp_closed) or (Tag == ssl_closed) ->
     {stop, normal, State};
@@ -237,6 +238,7 @@ handle_info({Tag, _TCPSocket, Reason}, State)
 	_ ->
 	    {stop, normal, State}
     end;
+
 handle_info({timeout, _Ref, activate}, State) ->
     activate_socket(State),
     {noreply, State, ?HIBERNATE_TIMEOUT};
@@ -276,22 +278,20 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 
-activate_socket(#state{socket = Socket,
-		       sock_mod = SockMod}) ->
-    PeerName =
-	case SockMod of
-	    gen_tcp ->
-		inet:setopts(Socket, [{active, once}]),
-		inet:peername(Socket);
-	    _ ->
-		SockMod:setopts(Socket, [{active, once}]),
-		SockMod:peername(Socket)
-	end,
+activate_socket( #state{socket = Socket, sock_mod = SockMod} ) ->
+    PeerName =  case SockMod of
+	    			gen_tcp ->
+						inet:setopts(Socket, [{active, once}]),
+						inet:peername(Socket);
+	    			_ ->
+						SockMod:setopts(Socket, [{active, once}]),
+						SockMod:peername(Socket)
+				end,
     case PeerName of
-	{error, _Reason} ->
-	    self() ! {tcp_closed, Socket};
-	{ok, _} ->
-	    ok
+		{error, _Reason} ->
+		    self() ! {tcp_closed, Socket};
+		{ok, _} ->
+		    ok
     end.
 
 %% Data processing for connectors directly generating xmlelement in
@@ -313,23 +313,26 @@ process_data([Element|Els], #state{c2s_pid = C2SPid} = State)
 	    process_data(Els, State)
     end;
 %% Data processing for connectors receivind data as string.
-process_data(Data,
-	     #state{xml_stream_state = XMLStreamState,
-		    shaper_state = ShaperState,
-		    c2s_pid = C2SPid} = State) ->
+process_data( Data, #state{xml_stream_state = XMLStreamState,shaper_state = ShaperState,c2s_pid = C2SPid} = State ) ->
     ?DEBUG("Received XML on stream = ~p", [binary_to_list(Data)]),
     XMLStreamState1 = xml_stream:parse(XMLStreamState, Data),
     {NewShaperState, Pause} = shaper:update(ShaperState, size(Data)),
-    if
-	C2SPid == undefined ->
-	    ok;
-	Pause > 0 ->
-	    erlang:start_timer(Pause, self(), activate);
-	true ->
-	    activate_socket(State)
+	?DEBUG("[Track:ejabberd_receiver:1003]:::::::> XMLStreamState=~p ; XMLStreamState1=~p",[XMLStreamState,XMLStreamState1]),
+	?DEBUG("[Track:ejabberd_receiver:1003]:::::::> {NewShaperState, Pause}=~p",[{NewShaperState, Pause}]),
+	if 
+		C2SPid == undefined -> 
+			?DEBUG("[Track:ejabberd_receiver:1003]:::::::> if ~p",["C2SPid == undefined"]),
+			ok;
+		Pause > 0 ->
+			?DEBUG("[Track:ejabberd_receiver:1003]:::::::> if ~p",["Pause > 0"]),
+	    	erlang:start_timer(Pause, self(), activate);
+		true ->
+			?DEBUG("[Track:ejabberd_receiver:1003]:::::::> if ~p",["true"]),
+	    	activate_socket(State)
     end,
-    State#state{xml_stream_state = XMLStreamState1,
-		shaper_state = NewShaperState}.
+    R = State#state{xml_stream_state = XMLStreamState1,shaper_state = NewShaperState},
+	?DEBUG("[Track:ejabberd_receiver:1003]:::::::> end State=~p ; R=~p",[State,R]),
+	R.
 
 %% Element coming from XML parser are wrapped inside xmlstreamelement
 %% When we receive directly xmlelement tuple (from a socket module

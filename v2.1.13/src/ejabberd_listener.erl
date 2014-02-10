@@ -43,42 +43,56 @@
 %% We do not block on send anymore.
 -define(TCP_SEND_TIMEOUT, 15000).
 
+%%启动
 start_link() ->
     supervisor:start_link({local, ejabberd_listeners}, ?MODULE, []).
 
-
+%%初始化
 init(_) ->
     ets:new(listen_sockets, [named_table, public]),
     bind_tcp_ports(),
     {ok, {{one_for_one, 10, 1}, []}}.
 
+%%绑定每个服务
 bind_tcp_ports() ->
+	%% 获取 mnesia 中 local_config 中的 listen 配置，每个端口对应的服务配置
     case ejabberd_config:get_local_option(listen) of
-	undefined ->
-	    ignore;
-	Ls ->
-	    lists:foreach(
-	      fun({Port, Module, Opts}) ->
-		      ModuleRaw = strip_frontend(Module),
-		      case ModuleRaw:socket_type() of
-			  independent -> ok;
-			  _ ->
-			      bind_tcp_port(Port, Module, Opts)
-		      end
-	      end, Ls)
+		undefined ->
+	    	ignore;
+		Ls ->
+	    	lists:foreach(
+	      		fun({Port, Module, Opts}) ->
+					%%得到原始模块名
+		      		ModuleRaw = strip_frontend(Module),
+					%% ejabberd_c2s:socket_type() -> xml_stream
+		      		case ModuleRaw:socket_type() of
+			  			independent -> ok;
+			  			_ ->
+							%%循环绑定每个TCP端口的服务
+							%%配置如：
+							%% { {5222,{ip},tcp}, ejabberd_c2s, [...] }
+							%% 到此为止，都是在解析配置，真正的绑定操作，是不是在这个函数里呢？
+			      			bind_tcp_port(Port, Module, Opts)
+		      		end
+	      		end, Ls)
     end.
 
 bind_tcp_port(PortIP, Module, RawOpts) ->
-    try check_listener_options(RawOpts) of
-	ok ->
-	    {Port, IPT, IPS, IPV, Proto, OptsClean} = parse_listener_portip(PortIP, RawOpts),
-	    {_Opts, SockOpts} = prepare_opts(IPT, IPV, OptsClean),
-	    case Proto of
-		udp -> ok;
-		_ ->
-		    ListenSocket = listen_tcp(PortIP, Module, SockOpts, Port, IPS),
-		    ets:insert(listen_sockets, {PortIP, ListenSocket})
-	    end
+	try check_listener_options(RawOpts) of
+		%%配置检查通过
+		ok ->
+			%% RawOpts 应该是配置信息，此处分析出配置信息中的属性
+	    	{Port, IPT, IPS, IPV, Proto, OptsClean} = parse_listener_portip(PortIP, RawOpts),
+	    	{_Opts, SockOpts} = prepare_opts(IPT, IPV, OptsClean),
+	    	%%匹配协议，UDP 还是 TCP
+			case Proto of
+				udp -> ok;
+				_ ->
+					%% 监听动作的执行方法
+		    		ListenSocket = listen_tcp(PortIP, Module, SockOpts, Port, IPS),
+					%% ets 里存这样的结构 {5222,{0,0,0,0},tcp} , #Port<x,x,x>
+		    		ets:insert(listen_sockets, {PortIP, ListenSocket})
+	    	end
     catch
 	throw:{error, Error} ->
 	    ?ERROR_MSG(Error, [])
@@ -135,9 +149,9 @@ init(PortIP, Module, RawOpts) ->
     {Port, IPT, IPS, IPV, Proto, OptsClean} = parse_listener_portip(PortIP, RawOpts),
     {Opts, SockOpts} = prepare_opts(IPT, IPV, OptsClean),
     if Proto == udp ->
-	    init_udp(PortIP, Module, Opts, SockOpts, Port, IPS);
-       true ->
-	    init_tcp(PortIP, Module, Opts, SockOpts, Port, IPS)
+		   			init_udp(PortIP, Module, Opts, SockOpts, Port, IPS);
+	   			true ->
+	    			init_tcp(PortIP, Module, Opts, SockOpts, Port, IPS)
     end.
 
 init_udp(PortIP, Module, Opts, SockOpts, Port, IPS) ->
@@ -162,31 +176,33 @@ init_tcp(PortIP, Module, Opts, SockOpts, Port, IPS) ->
 
 listen_tcp(PortIP, Module, SockOpts, Port, IPS) ->
     case ets:lookup(listen_sockets, PortIP) of
-	[{PortIP, ListenSocket}] ->
-	    ?INFO_MSG("Reusing listening port for ~p", [Port]),
-	    ets:delete(listen_sockets, Port),
-	    ListenSocket;
-	_ ->
-	    SockOpts2 = try erlang:system_info(otp_release) >= "R13B" of
-			    true -> [{send_timeout_close, true} | SockOpts];
-			    false -> SockOpts
-			catch
-			    _:_ -> []
-			end,
-	    Res = gen_tcp:listen(Port, [binary,
-					{packet, 0},
-					{active, false},
-					{reuseaddr, true},
-					{nodelay, true},
-					{send_timeout, ?TCP_SEND_TIMEOUT},
-					{keepalive, true} |
-					SockOpts2]),
-	    case Res of
-		{ok, ListenSocket} ->
-		    ListenSocket;
-		{error, Reason} ->
-		    socket_error(Reason, PortIP, Module, SockOpts, Port, IPS)
-	    end
+		[{PortIP, ListenSocket}] ->
+	    	?INFO_MSG("222222 Reusing listening port for ~p", [Port]),
+	    	ets:delete(listen_sockets, Port),
+	    	ListenSocket;
+		_ ->
+	    	?INFO_MSG("111111 Doing listening port ip for ~p", [PortIP]),
+			SockOpts2 = try erlang:system_info(otp_release) >= "R13B" of
+			    			true -> [{send_timeout_close, true} | SockOpts];
+			    			false -> SockOpts
+						catch
+			    			_:_ -> []
+						end,
+			%%监听指定的IP和端口,TCP协议,接下来就要看看这个socke在哪进行accept了
+	    	Res = gen_tcp:listen(Port, [
+								binary,
+								{packet, 0},
+								{active, false},
+								{reuseaddr, true},
+								{nodelay, true},
+								{send_timeout, ?TCP_SEND_TIMEOUT},
+								{keepalive, true} | SockOpts2 ]),
+	    	case Res of
+				{ok, ListenSocket} ->
+		    		ListenSocket;
+				{error, Reason} ->
+		    		socket_error(Reason, PortIP, Module, SockOpts, Port, IPS)
+	    	end
     end.
 
 %% @spec (PortIP, Opts) -> {Port, IPT, IPS, IPV, OptsClean}
@@ -274,26 +290,31 @@ get_ip_tuple(IPOpt, _IPVOpt) ->
     IPOpt.
 
 accept(ListenSocket, Module, Opts) ->
+	%%开始接收链接
     case gen_tcp:accept(ListenSocket) of
-	{ok, Socket} ->
-	    case {inet:sockname(Socket), inet:peername(Socket)} of
-		{{ok, Addr}, {ok, PAddr}} ->
-		    ?INFO_MSG("(~w) Accepted connection ~w -> ~w",
-			      [Socket, PAddr, Addr]);
-		_ ->
-		    ok
-	    end,
-	    CallMod = case is_frontend(Module) of
-			  true -> ejabberd_frontend_socket;
-			  false -> ejabberd_socket
-		      end,
-		%?INFO_MSG("(~w) **************** ",[CallMod]),
-	    CallMod:start(strip_frontend(Module), gen_tcp, Socket, Opts),
-	    accept(ListenSocket, Module, Opts);
-	{error, Reason} ->
-	    ?ERROR_MSG("(~w) Failed TCP accept: ~w",
-                       [ListenSocket, Reason]),
-	    accept(ListenSocket, Module, Opts)
+		{ok, Socket} ->
+	    	case {inet:sockname(Socket), inet:peername(Socket)} of
+				{{ok, Addr}, {ok, PAddr}} ->
+		    		?INFO_MSG("(~w) Accepted connection ~w -> ~w",
+			      	[Socket, PAddr, Addr]);
+				_ ->
+		    		ok
+	    	end,
+			%% 这里是 CallMod = ejabberd_socket
+	    	CallMod = case is_frontend(Module) of
+				true -> ejabberd_frontend_socket;
+				false -> ejabberd_socket
+		    end,
+			%?INFO_MSG("(~w) **************** ",[CallMod]),
+			%% 被接受的这个链接，交给 ejabberd_socket 模块处理，进程由 ejabberd_socket:start/4 处理
+	    	CallMod:start(strip_frontend(Module), gen_tcp, Socket, Opts),
+			
+			%%如果没有异常，则继续监听下一次的链接请求，尾递归	    	
+			accept(ListenSocket, Module, Opts);
+		{error, Reason} ->
+	    	?ERROR_MSG("(~w) Failed TCP accept: ~w",
+            [ListenSocket, Reason]),
+	    	accept(ListenSocket, Module, Opts)
     end.
 
 udp_recv(Socket, Module, Opts) ->

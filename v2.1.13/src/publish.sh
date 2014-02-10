@@ -1,4 +1,4 @@
-#./configure --prefix=/opt/ejabberd/runtime --enable-odbc --enable-user=root
+#./configure --prefix=/opt/ejabberd/runtime --enable-user=root
 make clean
 make
 rm -rf /app/ejabberd/*

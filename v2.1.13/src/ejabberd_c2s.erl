@@ -147,7 +147,10 @@
 %%% API
 %%%----------------------------------------------------------------------
 start(SockData, Opts) ->
-    ?SUPERVISOR_START.
+	?DEBUG("[Track:ejabberd_c2s:0000]:::::::> SockData=~p, Opts=~p",[SockData, Opts]),
+	%% 相当于执行了 p1_fsm:start(ejabberd_c2s, [SockData, Opts],fsm_limit_opts(Opts) ++ ?FSMOPTS)
+	%% 去 p1_fsm:start/3
+	?SUPERVISOR_START.
 
 start_link(SockData, Opts) ->
     ?GEN_FSM:start_link(ejabberd_c2s, [SockData, Opts],
@@ -211,13 +214,12 @@ init([{SockMod, Socket}, Opts]) ->
     Access = case lists:keysearch(access, 1, Opts) of
 		 {value, {_, A}} -> A;
 		 _ -> all
-	     end,
+	end,
     Shaper = case lists:keysearch(shaper, 1, Opts) of
-		 {value, {_, S}} -> S;
-		 _ -> none
-	     end,
-    XMLSocket =
-	case lists:keysearch(xml_socket, 1, Opts) of
+		{value, {_, S}} -> S;
+		_ -> none
+	end,
+    XMLSocket = case lists:keysearch(xml_socket, 1, Opts) of
 	    {value, {_, XS}} -> XS;
 	    _ -> false
 	end,
@@ -226,19 +228,21 @@ init([{SockMod, Socket}, Opts]) ->
     StartTLSRequired = lists:member(starttls_required, Opts),
     TLSEnabled = lists:member(tls, Opts),
     TLS = StartTLS orelse StartTLSRequired orelse TLSEnabled,
-    TLSOpts1 =
-	lists:filter(fun({certfile, _}) -> true;
-			(_) -> false
-		     end, Opts),
+    TLSOpts1 = lists:filter(
+				 	fun({certfile, _}) -> 
+						 true; 
+					(_) -> 
+						 false
+		     		end, Opts),
     TLSOpts = [verify_none | TLSOpts1],
     IP = peerip(SockMod, Socket),
     %% Check if IP is blacklisted:
     case is_ip_blacklisted(IP) of
-	true ->
-	    ?INFO_MSG("Connection attempt from blacklisted IP: ~s (~w)",
-		      [jlib:ip_to_list(IP), IP]),
-	    {stop, normal};
-	false ->
+		true ->
+	    	?INFO_MSG("Connection attempt from blacklisted IP: ~s (~w)",
+			[jlib:ip_to_list(IP), IP]),
+	    	{stop, normal};
+		false ->
 	    Socket1 =
 		if
 		    TLSEnabled ->
@@ -1191,6 +1195,7 @@ code_change(_OldVsn, StateName, StateData, _Extra) ->
 %%          {stop, Reason, NewStateData}
 %%----------------------------------------------------------------------
 handle_info({send_text, Text}, StateName, StateData) ->
+	
     send_text(StateData, Text),
     ejabberd_hooks:run(c2s_loop_debug, [Text]),
     fsm_next_state(StateName, StateData);

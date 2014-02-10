@@ -3,6 +3,7 @@
 
 -include("ejabberd.hrl").
 -include("jlib.hrl").
+-include_lib("xmerl/include/xmerl.hrl").
 
 -define(HTTP_HEAD,"application/x-www-form-urlencoded").
 
@@ -22,8 +23,6 @@
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
-
-
 
 %% Message 有时是长度大于1的列表，所以这里要遍历
 %% 如果列表中有多个要提取的关键字，我就把他们组合成一个 List
@@ -169,6 +168,60 @@ sync_user(Domain,FromUser,ToUser,SType) ->
 user_send_packet_handler(From, To, Packet) ->
 	?INFO_MSG("~n************** my_hookhandler user_send_packet_handler >>>>>>>>>>>>>>>~p~n ",[liangchuan_debug]),
 	?INFO_MSG("~n~pFrom=~p ; To=~p ; Packet=~p~n ", [liangchuan_debug,From, To, Packet] ),
+	%% From={jid,"cc","test.com","Smack","cc","test.com","Smack"}
+	[X,E|_] = tuple_to_list(Packet),
+	{jid,_,Domain,_,_,_,_} = To,
+	?DEBUG("Domain=~p ; E=~p", [Domain,E] ),
+	case E of 
+		"message" ->
+			{_,"message",Attr,_} = Packet,
+			?DEBUG("Attr=~p", [Attr] ),
+			D = dict:from_list(Attr),
+			T = dict:fetch("type", D),
+			%% 只响应 type != normal 的消息
+			?DEBUG("Type=~p", [T] ),
+			if T=/="normal" ->
+				%% 理论上讲，这个地方一定要有一个ID，不过如果没有，其实对服务器没影响，但客户端就麻烦了
+				SRC_ID_STR = case dict:is_key("id", D) of 
+					true -> dict:fetch("id", D);
+					_ -> ""
+				end,
+				?DEBUG("SRC_ID_STR=~p", [SRC_ID_STR] ),
+				%% 应答消息，要应答到 from 上
+				case dict:is_key("from", D) of 
+					true -> 
+						Attributes = [
+								{"id",os:cmd("uuidgen")--"\n"},
+								{"to",dict:fetch("from", D)},
+								{"from","messageAck@"++Domain},
+								{"type","normal"}
+						],
+						Child = [
+								 	{xmlelement, "body", [], [
+										{xmlcdata, list_to_binary("{'src_id':'"++SRC_ID_STR++"','received':'true'}")}
+									]}
+								],
+						%%Answer = {xmlelement,"message",Attributes, []},
+						Answer = {xmlelement, "message", Attributes , Child},
+						FF = jlib:string_to_jid(xml:get_tag_attr_s("from", Answer)),
+    					TT = jlib:string_to_jid(xml:get_tag_attr_s("to", Answer)),
+						?DEBUG("Answer ::::> FF=~p ; TT=~p ; P=~p ", [FF,TT,Answer] ),
+						case catch ejabberd_router:route(FF, TT, Answer) of
+						    ok -> 
+								?DEBUG("Answer ::::> ~p ", [ok] );
+						    _ERROR ->
+								?DEBUG("Answer ::::> error=~p ", [_ERROR] )
+						end,
+						answer;
+					_ ->
+						?DEBUG("~p", [skip_01] ),
+						skip
+				end
+			end;
+		_ ->
+			?DEBUG("~p", [skip_00] ),
+			skip
+	end,
 	?INFO_MSG("~n************** my_hookhandler user_send_packet_handler <<<<<<<<<<<<<<<~p~n ",[liangchuan_debug]),
 	ok.
 	

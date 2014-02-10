@@ -100,11 +100,13 @@ new(CallbackPid) ->
 
 new(CallbackPid, MaxSize) ->
     Port = open_port({spawn, "expat_erl"}, [binary]),
-    #xml_stream_state{callback_pid = CallbackPid,
-		      port = Port,
-		      stack = [],
-		      size = 0,
-		      maxsize = MaxSize}.
+    #xml_stream_state{
+			callback_pid = CallbackPid,
+		    port = Port,
+		    stack = [],
+		    size = 0,
+		    maxsize = MaxSize
+	}.
 
 
 parse(#xml_stream_state{callback_pid = CallbackPid,
