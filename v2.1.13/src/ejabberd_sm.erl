@@ -563,8 +563,14 @@ route_message(From, To, Packet) ->
 	%% 在这里做一个 ack 给接收人 
 	MsgType = xml:get_tag_attr_s("msgtype", Packet),
 	?DEBUG("[route_message] ~p ::::> MsgType=~p",["01",MsgType]),
+	%% 如果收消息人所在的域，需要做ACK，就执行第一段逻辑，否则直接路由消息到目标地址
+	#jid{lserver=Domain} = To,
+	MessageAck = case catch ejabberd_config:get_local_option({message_ack,Domain}) of 
+		true -> true;
+		_ -> false
+	end,
 	if 
-		length(MsgType) > 0 ->
+		length(MsgType) > 0 , MessageAck ->
 			%% 这里还有一个逻辑，看看收件人的 session 是否有效，如果无效，如果有效校验就ACK校验，无效就算了
 		    LUser = To#jid.luser,
 		    LServer = To#jid.lserver,
