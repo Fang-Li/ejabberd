@@ -83,13 +83,13 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
+%% 在 ejabberd_local 模块转过来的，精髓都在这里了，问题也在这里
 route(From, To, Packet) ->
     case catch do_route(From, To, Packet) of
-	{'EXIT', Reason} ->
-	    ?ERROR_MSG("~p~nwhen processing: ~p",
-		       [Reason, {From, To, Packet}]);
-	_ ->
-	    ok
+		{'EXIT', Reason} ->
+	    	?ERROR_MSG("~p~nwhen processing: ~p",[Reason, {From, To, Packet}]);
+		_ ->
+	    	ok
     end.
 
 open_session(SID, User, Server, Resource, Info) ->
@@ -131,10 +131,11 @@ bounce_offline_message(From, To, Packet) ->
     stop.
 
 disconnect_removed_user(User, Server) ->
-    ejabberd_sm:route(jlib:make_jid("", "", ""),
-		      jlib:make_jid(User, Server, ""),
-		      {xmlelement, "broadcast", [],
-		       [{exit, "User removed"}]}).
+    ejabberd_sm:route(
+	  			jlib:make_jid("", "", ""),
+				jlib:make_jid(User, Server, ""),
+				{xmlelement, "broadcast", [],[{exit, "User removed"}]}
+	).
 
 get_user_resources(User, Server) ->
     LUser = jlib:nodeprep(User),
@@ -273,12 +274,11 @@ init([]) ->
     ets:new(sm_iqtable, [named_table]),
     lists:foreach(
       fun(Host) ->
-	      ejabberd_hooks:add(roster_in_subscription, Host,
-				 ejabberd_sm, check_in_subscription, 20),
-	      ejabberd_hooks:add(offline_message_hook, Host,
-				 ejabberd_sm, bounce_offline_message, 100),
-	      ejabberd_hooks:add(remove_user, Host,
-				 ejabberd_sm, disconnect_removed_user, 100)
+	      ejabberd_hooks:add(roster_in_subscription, Host, ejabberd_sm, check_in_subscription, 20),
+		  
+	      ejabberd_hooks:add(offline_message_hook, Host, ejabberd_sm, bounce_offline_message, 100),
+	      
+		  ejabberd_hooks:add(remove_user, Host, ejabberd_sm, disconnect_removed_user, 100)
       end, ?MYHOSTS),
     ejabberd_commands:register_commands(commands()),
 
@@ -409,108 +409,102 @@ recount_session_table(Node) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 do_route(From, To, Packet) ->
-    ?DEBUG("session manager~n\tfrom ~p~n\tto ~p~n\tpacket ~P~n",
-	   [From, To, Packet, 8]),
-    #jid{user = User, server = Server,
-	 luser = LUser, lserver = LServer, lresource = LResource} = To,
+    ?DEBUG("session manager~n\tfrom ~p~n\tto ~p~n\tpacket ~P~n",[From, To, Packet, 8]),
+    #jid{user = User, server = Server, luser = LUser, lserver = LServer, lresource = LResource} = To,
     {xmlelement, Name, Attrs, _Els} = Packet,
     case LResource of
-	"" ->
-	    case Name of
-		"presence" ->
-		    {Pass, _Subsc} =
-			case xml:get_attr_s("type", Attrs) of
-			    "subscribe" ->
-				Reason = xml:get_path_s(
-					   Packet,
-					   [{elem, "status"}, cdata]),
-				{is_privacy_allow(From, To, Packet) andalso
-				 ejabberd_hooks:run_fold(
-				   roster_in_subscription,
-				   LServer,
-				   false,
-				   [User, Server, From, subscribe, Reason]),
-				 true};
-			    "subscribed" ->
-				{is_privacy_allow(From, To, Packet) andalso
-				 ejabberd_hooks:run_fold(
-				   roster_in_subscription,
-				   LServer,
-				   false,
-				   [User, Server, From, subscribed, ""]),
-				 true};
-			    "unsubscribe" ->
-				{is_privacy_allow(From, To, Packet) andalso
-				 ejabberd_hooks:run_fold(
-				   roster_in_subscription,
-				   LServer,
-				   false,
-				   [User, Server, From, unsubscribe, ""]),
-				 true};
-			    "unsubscribed" ->
-				{is_privacy_allow(From, To, Packet) andalso
-				 ejabberd_hooks:run_fold(
-				   roster_in_subscription,
-				   LServer,
-				   false,
-				   [User, Server, From, unsubscribed, ""]),
-				 true};
-			    _ ->
-				{true, false}
-			end,
-		    if Pass ->
-			    PResources = get_user_present_resources(
-					   LUser, LServer),
-			    lists:foreach(
-			      fun({_, R}) ->
-				      do_route(
-					From,
-					jlib:jid_replace_resource(To, R),
-					Packet)
-			      end, PResources);
-		       true ->
-			    ok
-		    end;
-		"message" ->
-		    route_message(From, To, Packet);
-		"iq" ->
-		    process_iq(From, To, Packet);
-		"broadcast" ->
-		    lists:foreach(
-		      fun(R) ->
-			      do_route(From,
-				       jlib:jid_replace_resource(To, R),
-				       Packet)
-		      end, get_user_resources(User, Server));
-		_ ->
-		    ok
-	    end;
-	_ ->
-	    USR = {LUser, LServer, LResource},
-	    case mnesia:dirty_index_read(session, USR, #session.usr) of
-		[] ->
+		"" ->
 		    case Name of
-			"message" ->
-			    route_message(From, To, Packet);
-			"iq" ->
-			    case xml:get_attr_s("type", Attrs) of
-				"error" -> ok;
-				"result" -> ok;
+				"presence" ->
+				    {Pass, _Subsc} = case xml:get_attr_s("type", Attrs) of
+						"subscribe" ->
+							Reason = xml:get_path_s(
+								   Packet,
+								   [{elem, "status"}, cdata]),
+							{is_privacy_allow(From, To, Packet) andalso
+							 ejabberd_hooks:run_fold(
+							   roster_in_subscription,
+							   LServer,
+							   false,
+							   [User, Server, From, subscribe, Reason]),
+							 true};
+					    "subscribed" ->
+							{is_privacy_allow(From, To, Packet) andalso
+							 ejabberd_hooks:run_fold(
+							   roster_in_subscription,
+							   LServer,
+							   false,
+							   [User, Server, From, subscribed, ""]),
+							 true};
+					    "unsubscribe" ->
+							{is_privacy_allow(From, To, Packet) andalso
+							 ejabberd_hooks:run_fold(
+							   roster_in_subscription,
+							   LServer,
+							   false,
+							   [User, Server, From, unsubscribe, ""]),
+							 true};
+					    "unsubscribed" ->
+							{is_privacy_allow(From, To, Packet) andalso
+							 ejabberd_hooks:run_fold(
+							   roster_in_subscription,
+							   LServer,
+							   false,
+							   [User, Server, From, unsubscribed, ""]),
+							 true};
+					    _ ->
+							{true, false}
+					end,
+				    if Pass ->
+					    PResources = get_user_present_resources(LUser, LServer),
+					    lists:foreach(
+					      fun({_, R}) ->
+						  	do_route(From,jlib:jid_replace_resource(To, R),Packet)
+					      end, PResources);
+				       true ->
+					    ok
+				    end;
+				"message" ->
+					%% 这是我们关心的
+				    route_message(From, To, Packet);
+				"iq" ->
+				    process_iq(From, To, Packet);
+				"broadcast" ->
+				    lists:foreach(
+				      fun(R) ->
+					      do_route(From,
+						       jlib:jid_replace_resource(To, R),
+						       Packet)
+				      end, get_user_resources(User, Server));
 				_ ->
-				    Err =
-					jlib:make_error_reply(
-					  Packet, ?ERR_SERVICE_UNAVAILABLE),
-				    ejabberd_router:route(To, From, Err)
-			    end;
-			_ ->
-			    ?DEBUG("packet droped~n", [])
+				    ok
 		    end;
-		Ss ->
-		    Session = lists:max(Ss),
-		    Pid = element(2, Session#session.sid),
-		    ?DEBUG("sending to process ~p~n", [Pid]),
-		    Pid ! {route, From, To, Packet}
-	    end
+		_ ->
+		    USR = {LUser, LServer, LResource},
+		    case mnesia:dirty_index_read(session, USR, #session.usr) of
+			[] ->
+			    case Name of
+				"message" ->
+				    route_message(From, To, Packet);
+				"iq" ->
+				    case xml:get_attr_s("type", Attrs) of
+					"error" -> ok;
+					"result" -> ok;
+					_ ->
+					    Err =
+						jlib:make_error_reply(
+						  Packet, ?ERR_SERVICE_UNAVAILABLE),
+					    ejabberd_router:route(To, From, Err)
+				    end;
+				_ ->
+				    ?DEBUG("packet droped~n", [])
+			    end;
+			Ss ->
+			    Session = lists:max(Ss),
+			    Pid = element(2, Session#session.sid),
+			    ?DEBUG("sending to process ~p~n", [Pid]),
+			    Pid ! {route, From, To, Packet}
+		    end
     end.
 
 %% The default list applies to the user as a whole,
@@ -538,56 +532,152 @@ is_privacy_allow(From, To, Packet, PrivacyList) ->
 		{From, To, Packet},
 		in]).
 
+send_ack(ID, JID)->
+	#jid{lserver=Domain} = JID,
+	Attributes = [
+			{"id",ID},
+			{"to",jlib:jid_to_string(JID) },
+			{"from","messageack@"++Domain},
+			{"type","normal"},
+			{"msgtype",""},
+			{"action","ack"}
+	],
+	Child = [
+			 	{xmlelement, "body", [], [
+					{xmlcdata, list_to_binary("{'answer_me':'How are you?'}")}
+				]}
+			],
+	ACK = {xmlelement, "message", Attributes , Child},
+	FF = jlib:string_to_jid(xml:get_tag_attr_s("from", ACK)),
+	TT = jlib:string_to_jid(xml:get_tag_attr_s("to", ACK)),
+	?DEBUG("send_ack ::::> FF=~p ; TT=~p ; P=~p ", [FF,TT,ACK] ),
+	case catch ejabberd_router:route(FF, TT, ACK) of
+	    ok ->
+			?DEBUG("send_ack ::::> ~p ", [ok] );
+	    _ERROR ->
+			?DEBUG("send_ack ::::> error=~p ", [_ERROR] )
+	end.
+
 route_message(From, To, Packet) ->
+	%% TODO 1002:如果能在这里判断出 session 是否有效，一切问题就都解决了其实。
+	%% 在这里做一个 ack 给接收人 
+	MsgType = xml:get_tag_attr_s("msgtype", Packet),
+	?DEBUG("[route_message] ~p ::::> MsgType=~p",["01",MsgType]),
+	if 
+		length(MsgType) > 0 ->
+			%% 这里还有一个逻辑，看看收件人的 session 是否有效，如果无效，如果有效校验就ACK校验，无效就算了
+		    LUser = To#jid.luser,
+		    LServer = To#jid.lserver,
+		    PrioRes = get_user_present_resources(LUser, LServer),
+			?DEBUG("[route_message] ~p ::::>",["02"]),
+			if 
+				length(PrioRes) > 0 ->
+					?DEBUG("[route_message] ~p ::::>",["03"]),
+					%% to 的 session 存在，需要 ACK 
+					ID = randoms:get_string(),
+					%% 先注册进程，再发送 ack 确认
+					%% 注册
+					register(list_to_atom(ID), spawn(fun()-> route_message(ack,From, To, Packet) end)),
+					%% 发送ACK
+					send_ack(ID, To);
+				true ->
+					?DEBUG("[route_message] after ~p ::::>",["04"]),
+					%% to 的 session 不存在，直接就能识别成离线消息
+					route_message(do,From, To, Packet)
+			end;
+		true ->
+			?DEBUG("[route_message] after ~p ::::>",["05"]),
+			%% 如果发送的是 ACK 的消息，就直接路由就行了
+			route_message(do,From, To, Packet)
+	end.
+route_message(ack,From, To, Packet) ->
+	%% 非 ACK 的消息，都认为是业务相关的，都在这做一下收信人 session 校验
+	receive
+		Any ->
+			?DEBUG("xxxx_receive_ack ::::> {From, To, Packet} = ~p ; Any=~p",[{From, To, Packet},Any]),
+			route_message(do,From, To, Packet)
+	after 5000 ->
+		?DEBUG("[route_message_ack] after 00 ::::> {From, To, Packet} = ~p",[{From, To, Packet}]),
+		%% 5秒以后，如果得不到ACK的回应，就关闭这个 session
+		#jid{user = User, server = Server} = To,
+	    case mnesia:dirty_index_read(session, {User, Server}, #session.us) of
+			[] ->
+				?DEBUG("[route_message_ack] after ~p ::::>",["01"]),
+			    offline;
+			Ss ->
+				?DEBUG("[route_message_ack] after ~p ::::> Ss_length=~p",["02",length(Ss)]),
+				%% -record(session, {sid, usr, us, priority, info}).
+				lists:foreach(fun(Session) -> 
+					SID = Session#session.sid,
+					USR = Session#session.usr,
+			  		?DEBUG("[route_message_ack] after ~p ::::> SID=~p ; USR=~p",["03",SID,USR]),
+					{UUU,SSS,RRR} = USR,
+					%% TODO 这里不光要关闭 session，还要关闭 c2s 链接
+					case ejabberd_sm:get_session_pid(UUU,SSS,RRR) of
+						Pid when is_pid(Pid) ->
+					  		?DEBUG("[route_message_ack] after ~p ::::>",["04"]),
+						    ejabberd_c2s:stop(Pid);
+						_ ->
+							?DEBUG("[route_message_ack] after ~p ::::>",["05"]),
+						    ok
+				    end,			
+					close_session(SID, UUU,SSS,RRR)
+				end, Ss)
+	    end,
+		route_message(do,From, To, Packet)
+	end;
+
+route_message(do,From, To, Packet) ->
     LUser = To#jid.luser,
     LServer = To#jid.lserver,
     PrioRes = get_user_present_resources(LUser, LServer),
     case catch lists:max(PrioRes) of
-	{Priority, _R} when is_integer(Priority), Priority >= 0 ->
-	    lists:foreach(
-	      %% Route messages to all priority that equals the max, if
-	      %% positive
-	      fun({P, R}) when P == Priority ->
-		      LResource = jlib:resourceprep(R),
-		      USR = {LUser, LServer, LResource},
-		      case mnesia:dirty_index_read(session, USR, #session.usr) of
-			  [] ->
-			      ok; % Race condition
-			  Ss ->
-			      Session = lists:max(Ss),
-			      Pid = element(2, Session#session.sid),
-			      ?DEBUG("sending to process ~p~n", [Pid]),
-			      Pid ! {route, From, To, Packet}
-		      end;
-		 %% Ignore other priority:
-		 ({_Prio, _Res}) ->
-		      ok
-	      end,
-	      PrioRes);
-	_ ->
-	    case xml:get_tag_attr_s("type", Packet) of
-		"error" ->
-		    ok;
-		"groupchat" ->
-		    bounce_offline_message(From, To, Packet);
-		"headline" ->
-		    bounce_offline_message(From, To, Packet);
+		%% 如果有多个源，那么每个都要发，多数情况只有一个源存在
+		%% TODO 1001:走这个分支，就证明这个 session 是有效的，不会是一个离线消息，问题就出在这里
+		{Priority, _R} when is_integer(Priority), Priority >= 0 ->
+		    lists:foreach(
+		      %% Route messages to all priority that equals the max, if
+		      %% positive
+		      fun({P, R}) when P == Priority ->
+			      LResource = jlib:resourceprep(R),
+			      USR = {LUser, LServer, LResource},
+			      case mnesia:dirty_index_read(session, USR, #session.usr) of
+					  [] ->
+					      ok; % Race condition
+					  Ss ->
+					      Session = lists:max(Ss),
+					      Pid = element(2, Session#session.sid),
+					      ?DEBUG("sending to process ~p~n", [Pid]),
+					      Pid ! {route, From, To, Packet}
+			      end;
+			 %% Ignore other priority:
+			 ({_Prio, _Res}) ->
+			      ok
+		      end,
+		      PrioRes);
 		_ ->
-		    case ejabberd_auth:is_user_exists(LUser, LServer) of
-			true ->
-			    case is_privacy_allow(From, To, Packet) of
-				true ->
-					?INFO_MSG("~p~n LServer=~p~n From=~p~n To=~p~n Packet=~p~n",[route_message_offline_message_hook,LServer, From, To, Packet]),
-				    ejabberd_hooks:run(offline_message_hook,LServer,[From, To, Packet]);
-				false ->
-				    ok
-			    end;
-			_ ->
-			    Err = jlib:make_error_reply(
-				    Packet, ?ERR_SERVICE_UNAVAILABLE),
-			    ejabberd_router:route(To, From, Err)
+		    case xml:get_tag_attr_s("type", Packet) of
+				"error" ->
+				    ok;
+				"groupchat" ->
+					bounce_offline_message(From, To, Packet);
+				"headline" ->
+				    bounce_offline_message(From, To, Packet);
+				_ ->
+				    case ejabberd_auth:is_user_exists(LUser, LServer) of
+						true ->
+						    case is_privacy_allow(From, To, Packet) of
+								true ->
+									?INFO_MSG("~p~n LServer=~p~n From=~p~n To=~p~n Packet=~p~n",[route_message_offline_message_hook,LServer, From, To, Packet]),
+								    ejabberd_hooks:run(offline_message_hook,LServer,[From, To, Packet]);
+								false ->
+								    ok
+						    end;
+						_ ->
+						    Err = jlib:make_error_reply(Packet, ?ERR_SERVICE_UNAVAILABLE),
+						    ejabberd_router:route(To, From, Err)
+				    end
 		    end
-	    end
     end.
 
 
@@ -619,11 +709,10 @@ clean_session_list([S1, S2 | Rest], Res) ->
 get_user_present_resources(LUser, LServer) ->
     US = {LUser, LServer},
     case catch mnesia:dirty_index_read(session, US, #session.us) of
-	{'EXIT', _Reason} ->
-	    [];
-	Ss ->
-	    [{S#session.priority, element(3, S#session.usr)} ||
-		S <- clean_session_list(Ss), is_integer(S#session.priority)]
+		{'EXIT', _Reason} ->
+		    [];
+		Ss ->
+		    [{S#session.priority, element(3, S#session.usr)} || S <- clean_session_list(Ss), is_integer(S#session.priority)]
     end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -633,7 +722,6 @@ check_for_sessions_to_replace(User, Server, Resource) ->
     LUser = jlib:nodeprep(User),
     LServer = jlib:nameprep(Server),
     LResource = jlib:resourceprep(Resource),
-
     %% TODO: Depending on how this is executed, there could be an unneeded
     %% replacement for max_sessions. We need to check this at some point.
     check_existing_resources(LUser, LServer, LResource),

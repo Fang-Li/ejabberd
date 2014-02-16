@@ -310,80 +310,86 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 do_route(OrigFrom, OrigTo, OrigPacket) ->
-    ?DEBUG("route~n\tfrom ~p~n\tto ~p~n\tpacket ~p~n",
-	   [OrigFrom, OrigTo, OrigPacket]),
-    case ejabberd_hooks:run_fold(filter_packet,
-				 {OrigFrom, OrigTo, OrigPacket}, []) of
-	{From, To, Packet} ->
-	    LDstDomain = To#jid.lserver,
-	    case mnesia:dirty_read(route, LDstDomain) of
-		[] ->
-		    ejabberd_s2s:route(From, To, Packet);
-		[R] ->
-		    Pid = R#route.pid,
-		    if
-			node(Pid) == node() ->
-			    case R#route.local_hint of
-				{apply, Module, Function} ->
-				    Module:Function(From, To, Packet);
-				_ ->
-				    Pid ! {route, From, To, Packet}
-			    end;
-			is_pid(Pid) ->
-			    Pid ! {route, From, To, Packet};
-			true ->
-			    drop
-		    end;
-		Rs ->
-		    Value = case ejabberd_config:get_local_option(
-				   {domain_balancing, LDstDomain}) of
-				undefined -> now();
-				random -> now();
-				source -> jlib:jid_tolower(From);
-				destination -> jlib:jid_tolower(To);
-				bare_source ->
-				    jlib:jid_remove_resource(
-				      jlib:jid_tolower(From));
-				bare_destination ->
-				    jlib:jid_remove_resource(
-				      jlib:jid_tolower(To))
-			    end,
-		    case get_component_number(LDstDomain) of
-			undefined ->
-			    case [R || R <- Rs, node(R#route.pid) == node()] of
+    ?DEBUG("route~n\tfrom ~p~n\tto ~p~n\tpacket ~p~n", [OrigFrom, OrigTo, OrigPacket]),
+    case ejabberd_hooks:run_fold(filter_packet,{OrigFrom, OrigTo, OrigPacket}, []) of
+		{From, To, Packet} ->
+		    LDstDomain = To#jid.lserver,
+			%% 例如，取域名为 test.com 得到的值是 {apply,ejabberd_local,route}
+		    case mnesia:dirty_read(route, LDstDomain) of
 				[] ->
-				    R = lists:nth(erlang:phash(Value, length(Rs)), Rs),
+					%% 当本地没有配置过这个域时，路由到 S2S 模块来处理
+				    ejabberd_s2s:route(From, To, Packet);
+				[R] ->
+					%% 如果本地配置过这个域（一个配置），则在此处理
 				    Pid = R#route.pid,
 				    if
-					is_pid(Pid) ->
-					    Pid ! {route, From, To, Packet};
-					true ->
-					    drop
+						node(Pid) == node() ->
+							%% 如果在本地节点上，交由 ejabberd_local:route/3 处理
+							case R#route.local_hint of
+								{apply, Module, Function} ->
+									%% XXX : 最终无论如何，都会落到某个节点的这个分支上，这是宿命
+									%% 所以接下来的重点是 ejabberd_local 模块
+							    	Module:Function(From, To, Packet);
+								_ ->
+									%% TODO 如果到了这个分支，不是死循环么？？？我艹
+							    	Pid ! {route, From, To, Packet}
+						    end;
+						is_pid(Pid) ->
+							%% 如果不在本地节点，就发消息给远程节点的相同模块来处理
+						    Pid ! {route, From, To, Packet};
+						true ->
+						    drop
 				    end;
-				LRs ->
-				    R = lists:nth(erlang:phash(Value, length(LRs)), LRs),
-				    Pid = R#route.pid,
-				    case R#route.local_hint of
-					{apply, Module, Function} ->
-					    Module:Function(From, To, Packet);
-					_ ->
-					    Pid ! {route, From, To, Packet}
+				Rs ->
+					%% 如果本地配置过这个域（多个配置），则在此处理
+					%% 这好像是个负载处理
+					%% 无论如何最终都会 落到 case mnesia:dirty_read(route, LDstDomain) of [R]-> ... 的那个分支上
+				    Value = case ejabberd_config:get_local_option( {domain_balancing, LDstDomain}) of
+						undefined -> now();
+						random -> now();
+						source -> jlib:jid_tolower(From);
+						destination -> jlib:jid_tolower(To);
+						bare_source ->
+						    jlib:jid_remove_resource( jlib:jid_tolower(From) );
+						bare_destination ->
+						    jlib:jid_remove_resource( jlib:jid_tolower(To) )
+					end,
+				    case get_component_number(LDstDomain) of
+						undefined ->
+						    case [R || R <- Rs, node(R#route.pid) == node()] of
+								[] ->
+								    R = lists:nth(erlang:phash(Value, length(Rs)), Rs),
+								    Pid = R#route.pid,
+								    if
+										is_pid(Pid) ->
+										    Pid ! {route, From, To, Packet};
+										true ->
+										    drop
+								    end;
+								LRs ->
+								    R = lists:nth(erlang:phash(Value, length(LRs)), LRs),
+								    Pid = R#route.pid,
+								    case R#route.local_hint of
+										{apply, Module, Function} ->
+										    Module:Function(From, To, Packet);
+										_ ->
+										    Pid ! {route, From, To, Packet}
+								    end
+						    end;
+						_ ->
+						    SRs = lists:ukeysort(#route.local_hint, Rs),
+						    R = lists:nth(erlang:phash(Value, length(SRs)), SRs),
+						    Pid = R#route.pid,
+						    if
+								is_pid(Pid) ->
+								    Pid ! {route, From, To, Packet};
+								true ->
+								    drop
+						    end
 				    end
-			    end;
-			_ ->
-			    SRs = lists:ukeysort(#route.local_hint, Rs),
-			    R = lists:nth(erlang:phash(Value, length(SRs)), SRs),
-			    Pid = R#route.pid,
-			    if
-				is_pid(Pid) ->
-				    Pid ! {route, From, To, Packet};
-				true ->
-				    drop
-			    end
-		    end
-	    end;
-	drop ->
-	    ok
+			end;
+		drop ->
+		    ok
     end.
 
 get_component_number(LDomain) ->

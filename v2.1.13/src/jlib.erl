@@ -396,8 +396,7 @@ iq_info_internal({xmlelement, Name, Attrs, Els}, Filter) when Name == "iq" ->
 	    {XMLNS, SubEl} =
 		case {Class, FilteredEls} of
 		    {request, [{xmlelement, _Name2, Attrs2, _Els2}]} ->
-			{xml:get_attr_s("xmlns", Attrs2),
-			 hd(FilteredEls)};
+				{xml:get_attr_s("xmlns", Attrs2), hd(FilteredEls)};
 		    {reply, _} ->
 			%% Find the namespace of the first non-error
 			%% element, if there is one.

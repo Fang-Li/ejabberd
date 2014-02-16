@@ -17,7 +17,8 @@
 	 start_link/0,
 	 user_send_packet_handler/3,
 	 offline_message_hook_handler/3,
-	 roster_in_subscription_handler/6
+	 roster_in_subscription_handler/6,
+	 user_receive_packet_handler/4
 	 %roster_out_subscription_handler/6
 ]).
 
@@ -169,7 +170,7 @@ user_send_packet_handler(From, To, Packet) ->
 	?INFO_MSG("~n************** my_hookhandler user_send_packet_handler >>>>>>>>>>>>>>>~p~n ",[liangchuan_debug]),
 	?INFO_MSG("~n~pFrom=~p ; To=~p ; Packet=~p~n ", [liangchuan_debug,From, To, Packet] ),
 	%% From={jid,"cc","test.com","Smack","cc","test.com","Smack"}
-	[X,E|_] = tuple_to_list(Packet),
+	[_,E|_] = tuple_to_list(Packet),
 	{jid,_,Domain,_,_,_,_} = To,
 	?DEBUG("Domain=~p ; E=~p", [Domain,E] ),
 	case E of 
@@ -179,22 +180,26 @@ user_send_packet_handler(From, To, Packet) ->
 			D = dict:from_list(Attr),
 			T = dict:fetch("type", D),
 			%% 只响应 type != normal 的消息
+			%% 理论上讲，这个地方一定要有一个ID，不过如果没有，其实对服务器没影响，但客户端就麻烦了
+			SRC_ID_STR = case dict:is_key("id", D) of 
+				true -> 
+					dict:fetch("id", D);
+				_ -> ""
+			end,
+			?DEBUG("SRC_ID_STR=~p", [SRC_ID_STR] ),
 			?DEBUG("Type=~p", [T] ),
+			%% XXX : 第一个逻辑，ack 由服务器向发送方发出响应，表明服务器已经收到此信息
 			if T=/="normal" ->
-				%% 理论上讲，这个地方一定要有一个ID，不过如果没有，其实对服务器没影响，但客户端就麻烦了
-				SRC_ID_STR = case dict:is_key("id", D) of 
-					true -> dict:fetch("id", D);
-					_ -> ""
-				end,
-				?DEBUG("SRC_ID_STR=~p", [SRC_ID_STR] ),
 				%% 应答消息，要应答到 from 上
 				case dict:is_key("from", D) of 
 					true -> 
 						Attributes = [
 								{"id",os:cmd("uuidgen")--"\n"},
 								{"to",dict:fetch("from", D)},
-								{"from","messageAck@"++Domain},
-								{"type","normal"}
+								{"from","messageack@"++Domain},
+								{"type","normal"},
+								{"msgtype",""},
+								{"action","ack"}
 						],
 						Child = [
 								 	{xmlelement, "body", [], [
@@ -216,7 +221,22 @@ user_send_packet_handler(From, To, Packet) ->
 					_ ->
 						?DEBUG("~p", [skip_01] ),
 						skip
-				end
+				end;
+				true ->
+					?DEBUG("~p", [skip_02] ),
+					skip
+			end,
+			%% XXX : 这里同时要响应 服务器发给接收端的 ACK 请求，接收端的 answer 信息，在此处理
+			%% 如果接收端的 answer 信息不处理，那么缺省时间后，接收端会被迫下线
+			RegName = erlang:list_to_atom(SRC_ID_STR),
+			?DEBUG("xxxx_send_ack 00 ::::> RegName=~p ; pid=~p ", [RegName,whereis(RegName)] ),
+			case whereis(RegName) of 
+				undefined ->
+					?DEBUG("xxxx_send_ack 02 ::::> RegName=~p ; pid=~p ", [RegName,whereis(RegName)] ),
+					skip;
+				P ->
+					?DEBUG("xxxx_send_ack 01 ::::> RegName=~p ; pid=~p ", [RegName,P] ),
+					RegName!ack
 			end;
 		_ ->
 			?DEBUG("~p", [skip_00] ),
@@ -224,7 +244,14 @@ user_send_packet_handler(From, To, Packet) ->
 	end,
 	?INFO_MSG("~n************** my_hookhandler user_send_packet_handler <<<<<<<<<<<<<<<~p~n ",[liangchuan_debug]),
 	ok.
-	
+
+user_receive_packet_handler(JID, From, To, Packet) ->
+	%% 这个事件，没用，因为 session 管理本身就有 bug
+	%% ?INFO_MSG("~n************** my_hookhandler user_receive_packet_handler >>>>>>>>>>>>>>>~p~n ",[liangchuan_debug]),
+	%% ?DEBUG("JID=~p ; From=~p ; To=~p ; Packet=~p", [JID, From, To, Packet] ),
+	%% ?INFO_MSG("~n************** my_hookhandler user_receive_packet_handler <<<<<<<<<<<<<<<~p~n ",[liangchuan_debug]),
+	ok.
+
 %% ====================================================================
 %% Behavioural functions 
 %% ====================================================================
@@ -240,7 +267,9 @@ init([]) ->
 		ejabberd_hooks:add(roster_in_subscription,Host,?MODULE, roster_in_subscription_handler ,90),
 		?INFO_MSG("#### roster_in_subscription Host=~p~n",[Host]),
 		ejabberd_hooks:add(offline_message_hook, Host, ?MODULE, offline_message_hook_handler, 45),
-		?INFO_MSG("#### offline_message_hook Host=~p~n",[Host])
+		?INFO_MSG("#### offline_message_hook Host=~p~n",[Host]),
+		ejabberd_hooks:add(user_receive_packet, Host, ?MODULE, user_receive_packet_handler, 45),
+		?INFO_MSG("#### user_receive_packet Host=~p~n",[Host])
 		%ejabberd_hooks:add(roster_out_subscription,Host,?MODULE, roster_out_subscription_handler ,90),
 		%?INFO_MSG("#### roster_out_subscription Host=~p~n",[Host])
   	  end, ?MYHOSTS),

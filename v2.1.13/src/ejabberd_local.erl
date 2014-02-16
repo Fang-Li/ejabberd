@@ -116,27 +116,28 @@ process_iq_reply(From, To, #iq{id = ID} = IQ) ->
 	    nothing
     end.
 
+%% 入口，请求从 ejabberd_router 模块来
 route(From, To, Packet) ->
     case catch do_route(From, To, Packet) of
-	{'EXIT', Reason} ->
-	    ?ERROR_MSG("~p~nwhen processing: ~p",
-		       [Reason, {From, To, Packet}]);
-	_ ->
-	    ok
+		{'EXIT', Reason} ->
+		    ?ERROR_MSG("~p~nwhen processing: ~p",[Reason, {From, To, Packet}]);
+		_ ->
+		    ok
     end.
 
 route_iq(From, To, IQ, F) ->
     route_iq(From, To, IQ, F, undefined).
 
 route_iq(From, To, #iq{type = Type} = IQ, F, Timeout) when is_function(F) ->
-    Packet = if Type == set; Type == get ->
-		     ID = randoms:get_string(),
-		     Host = From#jid.lserver,
-		     register_iq_response_handler(Host, ID, undefined, F, Timeout),
-		     jlib:iq_to_xml(IQ#iq{id = ID});
+	Packet = if 
+		Type == set; Type == get ->
+			ID = randoms:get_string(),
+			Host = From#jid.lserver,
+			register_iq_response_handler(Host, ID, undefined, F, Timeout),
+			jlib:iq_to_xml(IQ#iq{id = ID});
 		true ->
-		     jlib:iq_to_xml(IQ)
-	     end,
+	    	jlib:iq_to_xml(IQ)
+    end,
     ejabberd_router:route(From, To, Packet).
 
 register_iq_response_handler(Host, ID, Module, Function) ->
@@ -150,10 +151,9 @@ register_iq_response_handler(_Host, ID, Module, Function, Timeout0) ->
 		      N
 	      end,
     TRef = erlang:start_timer(Timeout, ejabberd_local, ID),
-    mnesia:dirty_write(#iq_response{id = ID,
-				    module = Module,
-				    function = Function,
-				    timer = TRef}).
+	IQR = #iq_response{id = ID,module = Module,function = Function,timer = TRef},
+	%% ?DEBUG("[register_iq_response_handler] IQR ::::> ~p",[IQR]),
+    mnesia:dirty_write(IQR).
 
 register_iq_handler(Host, XMLNS, Module, Fun) ->
     ejabberd_local ! {register_iq_handler, Host, XMLNS, Module, Fun}.
@@ -297,33 +297,32 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 do_route(From, To, Packet) ->
-    ?DEBUG("local route~n\tfrom ~p~n\tto ~p~n\tpacket ~P~n",
-	   [From, To, Packet, 8]),
+    ?DEBUG("local route~n\tfrom ~p~n\tto ~p~n\tpacket ~P~n",[From, To, Packet, 8]),
     if
-	To#jid.luser /= "" ->
-	    ejabberd_sm:route(From, To, Packet);
-	To#jid.lresource == "" ->
-	    {xmlelement, Name, _Attrs, _Els} = Packet,
-	    case Name of
-		"iq" ->
-		    process_iq(From, To, Packet);
-		"message" ->
-		    ok;
-		"presence" ->
-		    ok;
-		_ ->
-		    ok
-	    end;
-	true ->
-	    {xmlelement, _Name, Attrs, _Els} = Packet,
-	    case xml:get_attr_s("type", Attrs) of
-		"error" -> ok;
-		"result" -> ok;
-		_ ->
-		    ejabberd_hooks:run(local_send_to_resource_hook,
-				       To#jid.lserver,
-				       [From, To, Packet])
-	    end
+		To#jid.luser /= "" ->
+			%% 如果收信人不是空，就要放到 session manager 模块去处理
+		    ejabberd_sm:route(From, To, Packet);
+		To#jid.lresource == "" ->
+			%% 140211： iq 单独处理，不是本次重点 
+		    {xmlelement, Name, _Attrs, _Els} = Packet,
+		    case Name of
+				"iq" ->
+				    process_iq(From, To, Packet);
+				"message" ->
+				    ok;
+				"presence" ->
+				    ok;
+				_ ->
+				    ok
+		    end;
+		true ->
+		    {xmlelement, _Name, Attrs, _Els} = Packet,
+		    case xml:get_attr_s("type", Attrs) of
+				"error" -> ok;
+				"result" -> ok;
+				_ ->
+			    	ejabberd_hooks:run(local_send_to_resource_hook, To#jid.lserver,[From, To, Packet])
+		    end
 	end.
 
 update_table() ->
@@ -338,8 +337,7 @@ update_table() ->
 
 get_iq_callback(ID) ->
     case mnesia:dirty_read(iq_response, ID) of
-	[#iq_response{module = Module, timer = TRef,
-		      function = Function}] ->
+	[#iq_response{module = Module, timer = TRef, function = Function}] ->
 	    cancel_timer(TRef),
 	    mnesia:dirty_delete(iq_response, ID),
 	    {ok, Module, Function};
@@ -352,13 +350,13 @@ process_iq_timeout(ID) ->
 
 process_iq_timeout() ->
     receive
-	ID ->
-	    case get_iq_callback(ID) of
-		{ok, undefined, Function} ->
-		    Function(timeout);
-		_ ->
-		    ok
-	    end
+		ID ->
+		    case get_iq_callback(ID) of
+				{ok, undefined, Function} ->
+				    Function(timeout);
+				_ ->
+				    ok
+		    end
     after 5000 ->
 	    ok
     end.

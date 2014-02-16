@@ -180,17 +180,17 @@ reset_stream(SocketData) when is_atom(SocketData#socket_state.receiver) ->
 
 %% sockmod=gen_tcp|tls|ejabberd_zlib
 send(SocketData, Data) ->
-    ?DEBUG("xxxxxxxx send ::::> SocketData=~p ; Data=~p~n ",[SocketData,Data]),
-    ?DEBUG("xxxxxxxx send ::::> sockmod=~p ; socket=~p~n",[SocketData#socket_state.sockmod,SocketData#socket_state.socket]),
+    %% ?DEBUG("xxxxxxxx send ::::> SocketData=~p ; Data=~p~n ",[SocketData,Data]),
+    %% ?DEBUG("xxxxxxxx send ::::> sockmod=~p ; socket=~p~n",[SocketData#socket_state.sockmod,SocketData#socket_state.socket]),
     case catch (SocketData#socket_state.sockmod):send(SocketData#socket_state.socket, Data) of
         ok -> 
-    		?DEBUG("xxxxxxxx send ::::> ~p.",[ok]),
-		ok;
+    		%% ?DEBUG("xxxxxxxx send ::::> ~p.",[ok]),
+			ok;
 	{error, timeout} ->
-	    ?INFO_MSG("xxxxxxxxxxxx Timeout on ~p:send",[SocketData#socket_state.sockmod]),
+	    %% ?INFO_MSG("xxxxxxxxxxxx Timeout on ~p:send",[SocketData#socket_state.sockmod]),
 	    exit(normal);
-        Error ->
-	    ?DEBUG("xxxxxxxxxxx Error in ~p:send: ~p",[SocketData#socket_state.sockmod, Error]),
+	Error ->
+	    %% ?DEBUG("xxxxxxxxxxx Error in ~p:send: ~p",[SocketData#socket_state.sockmod, Error]),
 	    exit(normal)
     end.
 
@@ -199,7 +199,7 @@ send(SocketData, Data) ->
 %% sockmod=ejabberd_http_poll|ejabberd_http_bind or any custom module
 send_xml(SocketData, Data) ->
 	try
-		?INFO_MSG("xxxxxxxx send_xml ::::> SocketData=~p ; Data=~p~n ",[SocketData,Data]),
+		%% ?INFO_MSG("xxxxxxxx send_xml ::::> SocketData=~p ; Data=~p~n ",[SocketData,Data]),
 		(SocketData#socket_state.sockmod):send_xml(SocketData#socket_state.socket, Data)
 	catch
 		_:X -> 

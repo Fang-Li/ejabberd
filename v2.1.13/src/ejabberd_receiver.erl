@@ -205,15 +205,15 @@ handle_cast(_Msg, State) ->
 %%--------------------------------------------------------------------
 handle_info( {Tag, _TCPSocket, Data}, #state{socket = Socket, sock_mod = SockMod} = State ) 
 	when (Tag == tcp) or (Tag == ssl) or (Tag == ejabberd_xml) ->
-	?DEBUG("[Track:ejabberd_receiver:1001]:::::::> Tag=~p, _TCPSocket=~p, Data=~p ,State=~p",[Tag, _TCPSocket, Data, State]),
+	%% ?DEBUG("[Track:ejabberd_receiver:1001]:::::::> Tag=~p, _TCPSocket=~p, Data=~p ,State=~p",[Tag, _TCPSocket, Data, State]),
 	case SockMod of
 		tls ->
 		    case tls:recv_data(Socket, Data) of
 				{ok, TLSData} ->
-					?DEBUG("[Track:ejabberd_receiver:1002]:::::::> (OK) TLSData=~p",[TLSData]),
+					%% ?DEBUG("[Track:ejabberd_receiver:1002]:::::::> (OK) TLSData=~p",[TLSData]),
 				    {noreply, process_data(TLSData, State),?HIBERNATE_TIMEOUT};
 				{error, _Reason} ->
-				    ?DEBUG("[Track:ejabberd_receiver:1002]:::::::> (ERROR) _Reason=~p",[_Reason]),
+				    %% ?DEBUG("[Track:ejabberd_receiver:1002]:::::::> (ERROR) _Reason=~p",[_Reason]),
 					{stop, normal, State}
 		    end;
 		ejabberd_zlib ->
@@ -317,21 +317,21 @@ process_data( Data, #state{xml_stream_state = XMLStreamState,shaper_state = Shap
     ?DEBUG("Received XML on stream = ~p", [binary_to_list(Data)]),
     XMLStreamState1 = xml_stream:parse(XMLStreamState, Data),
     {NewShaperState, Pause} = shaper:update(ShaperState, size(Data)),
-	?DEBUG("[Track:ejabberd_receiver:1003]:::::::> XMLStreamState=~p ; XMLStreamState1=~p",[XMLStreamState,XMLStreamState1]),
-	?DEBUG("[Track:ejabberd_receiver:1003]:::::::> {NewShaperState, Pause}=~p",[{NewShaperState, Pause}]),
+	%% ?DEBUG("[Track:ejabberd_receiver:1003]:::::::> XMLStreamState=~p ; XMLStreamState1=~p",[XMLStreamState,XMLStreamState1]),
+	%% ?DEBUG("[Track:ejabberd_receiver:1003]:::::::> {NewShaperState, Pause}=~p",[{NewShaperState, Pause}]),
 	if 
 		C2SPid == undefined -> 
-			?DEBUG("[Track:ejabberd_receiver:1003]:::::::> if ~p",["C2SPid == undefined"]),
+			%% ?DEBUG("[Track:ejabberd_receiver:1003]:::::::> if ~p",["C2SPid == undefined"]),
 			ok;
 		Pause > 0 ->
-			?DEBUG("[Track:ejabberd_receiver:1003]:::::::> if ~p",["Pause > 0"]),
+			%% ?DEBUG("[Track:ejabberd_receiver:1003]:::::::> if ~p",["Pause > 0"]),
 	    	erlang:start_timer(Pause, self(), activate);
 		true ->
-			?DEBUG("[Track:ejabberd_receiver:1003]:::::::> if ~p",["true"]),
+			%% ?DEBUG("[Track:ejabberd_receiver:1003]:::::::> if ~p",["true"]),
 	    	activate_socket(State)
     end,
     R = State#state{xml_stream_state = XMLStreamState1,shaper_state = NewShaperState},
-	?DEBUG("[Track:ejabberd_receiver:1003]:::::::> end State=~p ; R=~p",[State,R]),
+	%% ?DEBUG("[Track:ejabberd_receiver:1003]:::::::> end State=~p ; R=~p",[State,R]),
 	R.
 
 %% Element coming from XML parser are wrapped inside xmlstreamelement
