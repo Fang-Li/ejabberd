@@ -192,6 +192,7 @@ user_send_packet_handler(From, To, Packet) ->
 				true -> true;
 				_ -> false
 			end,
+			?DEBUG("ack_from=~p ; Domain=~p",[ACK_FROM,Domain]),
 			%% XXX : 第一个逻辑，ack 由服务器向发送方发出响应，表明服务器已经收到此信息
 			%% 应答消息，要应答到 from 上
 			if ACK_FROM , T=/="normal" ->
