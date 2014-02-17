@@ -188,9 +188,13 @@ user_send_packet_handler(From, To, Packet) ->
 			end,
 			?DEBUG("SRC_ID_STR=~p", [SRC_ID_STR] ),
 			?DEBUG("Type=~p", [T] ),
+			ACK_FROM = case catch ejabberd_config:get_local_option({ack_from ,Domain}) of 
+				true -> true;
+				_ -> false
+			end,
 			%% XXX : 第一个逻辑，ack 由服务器向发送方发出响应，表明服务器已经收到此信息
-			if T=/="normal" ->
-				%% 应答消息，要应答到 from 上
+			%% 应答消息，要应答到 from 上
+			if ACK_FROM , T=/="normal" ->
 				case dict:is_key("from", D) of 
 					true -> 
 						Attributes = [
