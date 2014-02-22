@@ -531,7 +531,7 @@ is_privacy_allow(From, To, Packet, PrivacyList) ->
 		PrivacyList,
 		{From, To, Packet},
 		in]).
-
+%% 140222 : 废弃这个方法，不需要发送ACK了目前
 send_ack(ID, JID)->
 	#jid{lserver=Domain} = JID,
 	Attributes = [
@@ -570,7 +570,10 @@ route_message(From, To, Packet) ->
 		_ -> false
 	end,
 	if 
-		ACK_TO , length(MsgType) > 0 ->
+		%% 140222 : 这里在逻辑上也要做一个比较大的修正；
+		%% 140222 : 再此处会拦截一些 msgtype 为指定值的消息，产生监听进程，而不是直接发送ack消息等待响应了
+		%% TODO 暂时只拦截 normalchat 消息
+		ACK_TO , MsgType =:= "normalchat" ->
 			%% 这里还有一个逻辑，看看收件人的 session 是否有效，如果无效，如果有效校验就ACK校验，无效就算了
 		    LUser = To#jid.luser,
 		    LServer = To#jid.lserver,
@@ -580,12 +583,22 @@ route_message(From, To, Packet) ->
 				length(PrioRes) > 0 ->
 					?DEBUG("[route_message] ~p ::::>",["03"]),
 					%% to 的 session 存在，需要 ACK 
-					ID = randoms:get_string(),
-					%% 先注册进程，再发送 ack 确认
-					%% 注册
-					register(list_to_atom(ID), spawn(fun()-> route_message(ack,From, To, Packet) end)),
+					%% 140222 : 这个地方，必须得拿原始消息的ID做进程标识了，因为取消了单独的ACK
+					%% ID = randoms:get_string(),
+					{_,"message",Attr,_} = Packet,
+					D = dict:from_list(Attr),
+					case dict:is_key("id", D) of 
+						true -> 
+							ID = dict:fetch("id", D),
+							%% 注册
+							register(list_to_atom(ID), spawn(fun()-> route_message(ack,From, To, Packet) end));
+						_ -> 
+							skip
+					end,
 					%% 发送ACK
-					send_ack(ID, To);
+					%% send_ack(ID, To,);
+					%% 140222 : 用一个正常的消息取代 ACK 消息
+					route_message(do,From, To, Packet);
 				true ->
 					?DEBUG("[route_message] after ~p ::::>",["04"]),
 					%% to 的 session 不存在，直接就能识别成离线消息
@@ -600,8 +613,9 @@ route_message(ack,From, To, Packet) ->
 	%% 非 ACK 的消息，都认为是业务相关的，都在这做一下收信人 session 校验
 	receive
 		Any ->
-			?DEBUG("xxxx_receive_ack ::::> {From, To, Packet} = ~p ; Any=~p",[{From, To, Packet},Any]),
-			route_message(do,From, To, Packet)
+			?DEBUG("xxxx_receive_ack ::::> {From, To, Packet} = ~p ; Any=~p",[{From, To, Packet},Any])
+			%% 140222 : 用真实消息代替ACK消息，所以这里不许要再发消息了，确认以后，结束
+			%% route_message(do,From, To, Packet)
 	after 5000 ->
 		?DEBUG("[route_message_ack] after 00 ::::> {From, To, Packet} = ~p",[{From, To, Packet}]),
 		%% 5秒以后，如果得不到ACK的回应，就关闭这个 session
