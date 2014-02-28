@@ -214,7 +214,7 @@ user_send_packet_handler(From, To, Packet) ->
 						%%Answer = {xmlelement,"message",Attributes, []},
 						Answer = {xmlelement, "message", Attributes , Child},
 						FF = jlib:string_to_jid(xml:get_tag_attr_s("from", Answer)),
-    					TT = jlib:string_to_jid(xml:get_tag_attr_s("to", Answer)),
+    						TT = jlib:string_to_jid(xml:get_tag_attr_s("to", Answer)),
 						?DEBUG("Answer ::::> FF=~p ; TT=~p ; P=~p ", [FF,TT,Answer] ),
 						case catch ejabberd_router:route(FF, TT, Answer) of
 						    ok -> 
@@ -233,16 +233,29 @@ user_send_packet_handler(From, To, Packet) ->
 			end,
 			%% XXX : 这里同时要响应 服务器发给接收端的 ACK 请求，接收端的 answer 信息，在此处理
 			%% 如果接收端的 answer 信息不处理，那么缺省时间后，接收端会被迫下线
-			RegName = erlang:list_to_atom(SRC_ID_STR),
-			?DEBUG("xxxx_send_ack 00 ::::> RegName=~p ; pid=~p ", [RegName,whereis(RegName)] ),
-			case whereis(RegName) of 
-				undefined ->
-					?DEBUG("xxxx_send_ack 02 ::::> RegName=~p ; pid=~p ", [RegName,whereis(RegName)] ),
-					skip;
-				P ->
-					?DEBUG("xxxx_send_ack 01 ::::> RegName=~p ; pid=~p ", [RegName,P] ),
-					RegName!ack
+			
+			%% 2014-2-27 : 
+			ACK_ID = list_to_atom(SRC_ID_STR),
+			case ejabberd_sm:ack(get,ACK_ID) of 
+				{ok,PPP} ->
+					?DEBUG("xxxx_send_ack_01 do ::::> ACK_ID=~p ; pid=~p ", [ACK_ID,PPP] ),
+					PPP!{ack,ACK_ID};
+				_ ->
+					?DEBUG("xxxx_send_ack_02 skip ::::> ACK_ID=~p ", [ACK_ID] ),
+					skip
 			end;
+		
+%%			2014-2-27 : 这个逻辑有问题，进程注册多了，会出异常
+%% 			RegName = list_to_atom(SRC_ID_STR),
+%% 			?DEBUG("xxxx_send_ack 00 ::::> RegName=~p ; pid=~p ", [RegName,whereis(RegName)] ),
+%% 			case whereis(RegName) of 
+%% 				undefined ->
+%% 					?DEBUG("xxxx_send_ack 02 ::::> RegName=~p ; pid=~p ", [RegName,whereis(RegName)] ),
+%% 					skip;
+%% 				P ->
+%% 					?DEBUG("xxxx_send_ack 01 ::::> RegName=~p ; pid=~p ", [RegName,P] ),
+%% 					RegName!ack
+%% 			end;
 		_ ->
 			?DEBUG("~p", [skip_00] ),
 			skip
