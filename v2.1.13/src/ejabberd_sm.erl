@@ -598,7 +598,7 @@ route_message(From, To, Packet) ->
 	%% 默认接收放的ACK超时是30秒，建议设置4-5分钟，单位毫秒
 	ACK_TO_TIMEOUT = case catch ejabberd_config:get_local_option({ack_to_timeout,Domain}) of 
 		N when is_integer(N) -> N;
-		_ -> 30*1000
+		_ -> 10*1000
 	end,
 	?DEBUG("[route_message] ~p ::::> ACK_TO=~p ; ACK_TO_TIMEOUT=~p ; MsgType=~p",["01",ACK_TO,ACK_TO_TIMEOUT,MsgType]),
 	if 
@@ -664,7 +664,10 @@ route_message({ack,ACK_TO_TIMEOUT},From, To, Packet) ->
 		D = dict:from_list(Attr),
 		ID = dict:fetch("id", D),
 		ack(del,list_to_atom(ID)),
-		route_message(From, To, Packet)
+		route_message(From, To, Packet),
+		%% TODO 重新发送时，要调用离线的回调接口，产生通知；
+		aa_hookhandler:send_offline_message(From,To,Packet)
+
 	%%	#jid{user = User, server = Server} = To,
 	%%    	case mnesia:dirty_index_read(session, {User, Server}, #session.us) of
 	%%		[] ->
@@ -721,6 +724,7 @@ route_message(do,From, To, Packet) ->
 			      ok
 		      end,
 		      PrioRes);
+	    	%% 以下分支用来处理离线消息
 		_ ->
 		    case xml:get_tag_attr_s("type", Packet) of
 				"error" ->
