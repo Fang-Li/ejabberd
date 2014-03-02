@@ -666,7 +666,7 @@ route_message({ack,ACK_TO_TIMEOUT},From, To, Packet) ->
 		ack(del,list_to_atom(ID)),
 		route_message(From, To, Packet),
 		%% TODO 重新发送时，要调用离线的回调接口，产生通知；
-		aa_hookhandler:send_offline_message(From,To,Packet)
+		aa_hookhandler:offline_message_hook_handler(From,To,Packet)
 
 	%%	#jid{user = User, server = Server} = To,
 	%%    	case mnesia:dirty_index_read(session, {User, Server}, #session.us) of
