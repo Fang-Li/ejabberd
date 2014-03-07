@@ -76,7 +76,7 @@ init([]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-
+%% http://localhost:5380/?body={"method":"process_counter"}
 handle_call({handle_http,Req}, _From, State) ->
 	Reply = try
 		Method = Req:get(method),

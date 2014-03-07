@@ -23,8 +23,8 @@
 ]).
 
 start_link() ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
-
+	{ok,Pid} = gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+	
 %% Message 有时是长度大于1的列表，所以这里要遍历
 %% 如果列表中有多个要提取的关键字，我就把他们组合成一个 List
 %% 大部分时间 List 只有一个元素
@@ -61,25 +61,36 @@ offline_message_hook_handler(From, To, Packet) ->
 	try
 		D = dict:from_list(Header),
 		V = dict:fetch("msgtype", D),
-		case V of "normalchat" ->
-			offline_message_hook_handler(From, To, Packet,D )
+		case V of 
+			"normalchat" ->
+				%% 2014-3-5 : 当消息离线时，要更改存储模块中对应的消息状态
+				MID = case dict:is_key("id", D) of 
+					true -> 
+						ID = dict:fetch("id", D),
+						SyncRes = gen_server:call(?MODULE,{sync_packet,offline,ID,Packet}),
+						?DEBUG("===========> SYNC_RES offline => ~p ; ID=~p",[SyncRes,ID]),
+						ID;
+					_ -> ""
+				end,
+				offline_message_hook_handler( From, To, Packet, D, MID );
+			_ -> skip
 		end
 	catch
 		_:_ -> ok
 	end.
 
-offline_message_hook_handler(From, To, Packet,D ) ->
+offline_message_hook_handler(From, To, Packet,D,ID ) ->
 	try
 		V = dict:fetch("fileType", D),
-		send_offline_message(From ,To ,Packet,V )
+		send_offline_message(From ,To ,Packet,V,ID )
 	catch
-		_:_ -> send_offline_message(From ,To ,Packet,"" )
+		_:_ -> send_offline_message(From ,To ,Packet,"",ID )
 	end,
 	ok.
 
 %% 将 Packet 中的 Text 消息 Post 到指定的 Http 服务
 %% IOS 消息推送功能
-send_offline_message(From ,To ,Packet,Type )->
+send_offline_message(From ,To ,Packet,Type,MID )->
 	{jid,FromUser,Domain,_,_,_,_} = From ,	
 	{jid,ToUser,_,_,_,_,_} = To ,	
 	%% 取自配置文件 ejabberd.cfg
@@ -88,8 +99,21 @@ send_offline_message(From ,To ,Packet,Type )->
  	HTTPService = ejabberd_config:get_local_option({http_server_service_client,Domain}),
 	HTTPTarget = string:concat(HTTPServer,HTTPService),
 	Msg = get_text_message_from_packet( Packet ),
-	{Service,Method,FN,TN,MSG,T} = {list_to_binary("service.uri.pet_user"),list_to_binary("pushMsgApn"),list_to_binary(FromUser),list_to_binary(ToUser),list_to_binary(Msg),list_to_binary(Type)},
-	ParamObj={obj,[ {"service",Service},{"method",Method},{"channel",list_to_binary("9")},{"params",{obj,[{"fromname",FN},{"toname",TN},{"msg",MSG},{"type",T}]} } ]},
+	{Service,Method,FN,TN,MSG,T,MSG_ID} = {
+				      list_to_binary("service.uri.pet_user"),
+				      list_to_binary("pushMsgApn"),
+				      list_to_binary(FromUser),
+				      list_to_binary(ToUser),
+				      list_to_binary(Msg),
+				      list_to_binary(Type),
+				      list_to_binary(MID)
+	},
+	ParamObj={obj,[ 
+		{"service",Service},
+		{"method",Method},
+		{"channel",list_to_binary("9")},
+		{"params",{obj,[{"fromname",FN},{"toname",TN},{"msg",MSG},{"type",T},{"id",MSG_ID}]} } 
+	]},
 	Form = "body="++rfc4627:encode(ParamObj),
 	?INFO_MSG("MMMMMMMMMMMMMMMMM===Form=~p~n",[Form]),
 	case httpc:request(post,{ HTTPTarget ,[], ?HTTP_HEAD , Form },[],[] ) of   
@@ -179,6 +203,7 @@ user_send_packet_handler(From, To, Packet) ->
 			?DEBUG("Attr=~p", [Attr] ),
 			D = dict:from_list(Attr),
 			T = dict:fetch("type", D),
+			MT = dict:fetch("msgtype", D),
 			%% 只响应 type != normal 的消息
 			%% 理论上讲，这个地方一定要有一个ID，不过如果没有，其实对服务器没影响，但客户端就麻烦了
 			SRC_ID_STR = case dict:is_key("id", D) of 
@@ -192,25 +217,23 @@ user_send_packet_handler(From, To, Packet) ->
 				true -> true;
 				_ -> false
 			end,
-			?DEBUG("ack_from=~p ; Domain=~p",[ACK_FROM,Domain]),
+			?DEBUG("ack_from=~p ; Domain=~p ; T=~p ; MT=~p",[ACK_FROM,Domain,T,MT]),
 			%% XXX : 第一个逻辑，ack 由服务器向发送方发出响应，表明服务器已经收到此信息
 			%% 应答消息，要应答到 from 上
-			if ACK_FROM , T=/="normal" ->
+			if ACK_FROM , T=/="normal",MT=:="normalchat" ->
 				case dict:is_key("from", D) of 
 					true -> 
 						Attributes = [
-								{"id",os:cmd("uuidgen")--"\n"},
-								{"to",dict:fetch("from", D)},
-								{"from","messageack@"++Domain},
-								{"type","normal"},
-								{"msgtype",""},
-								{"action","ack"}
+							{"id",os:cmd("uuidgen")--"\n"},
+							{"to",dict:fetch("from", D)},
+							{"from","messageack@"++Domain},
+							{"type","normal"},
+							{"msgtype",""},
+							{"action","ack"}
 						],
-						Child = [
-								 	{xmlelement, "body", [], [
-										{xmlcdata, list_to_binary("{'src_id':'"++SRC_ID_STR++"','received':'true'}")}
-									]}
-								],
+						Child = [{xmlelement, "body", [], [
+								{xmlcdata, list_to_binary("{'src_id':'"++SRC_ID_STR++"','received':'true'}")}
+							]}],
 						%%Answer = {xmlelement,"message",Attributes, []},
 						Answer = {xmlelement, "message", Attributes , Child},
 						FF = jlib:string_to_jid(xml:get_tag_attr_s("from", Answer)),
@@ -231,31 +254,31 @@ user_send_packet_handler(From, To, Packet) ->
 					?DEBUG("~p", [skip_02] ),
 					skip
 			end,
-			%% XXX : 这里同时要响应 服务器发给接收端的 ACK 请求，接收端的 answer 信息，在此处理
-			%% 如果接收端的 answer 信息不处理，那么缺省时间后，接收端会被迫下线
-			
-			%% 2014-2-27 : 
-			ACK_ID = list_to_atom(SRC_ID_STR),
-			case ejabberd_sm:ack(get,ACK_ID) of 
-				{ok,PPP} ->
-					?DEBUG("xxxx_send_ack_01 do ::::> ACK_ID=~p ; pid=~p ", [ACK_ID,PPP] ),
-					PPP!{ack,ACK_ID};
-				_ ->
-					?DEBUG("xxxx_send_ack_02 skip ::::> ACK_ID=~p ", [ACK_ID] ),
+			%% TODO 2014-3-4 : 在这里新建包，状态分::> new -> offline / ack
+			%% 我要判断消息是不是一个聊天消息，如果是 ack 消息，则改变消息状态为 ack
+			if
+				ACK_FROM,MT=:="normalchat" ->
+					SyncRes = gen_server:call(?MODULE,{sync_packet,new,SRC_ID_STR,Packet}),
+					?DEBUG("===========> SYNC_RES new => ~p ; ID=~p",[SyncRes,SRC_ID_STR]);
+				ACK_FROM,MT=:="msgStatus",T=:="normal" ->
+					SyncRes = gen_server:call(?MODULE,{sync_packet,ack,SRC_ID_STR,Packet}),
+					?DEBUG("===========> SYNC_RES ack => ~p ; ID=~p",[SyncRes,SRC_ID_STR]);
+				true ->
 					skip
 			end;
-		
-%%			2014-2-27 : 这个逻辑有问题，进程注册多了，会出异常
-%% 			RegName = list_to_atom(SRC_ID_STR),
-%% 			?DEBUG("xxxx_send_ack 00 ::::> RegName=~p ; pid=~p ", [RegName,whereis(RegName)] ),
-%% 			case whereis(RegName) of 
-%% 				undefined ->
-%% 					?DEBUG("xxxx_send_ack 02 ::::> RegName=~p ; pid=~p ", [RegName,whereis(RegName)] ),
-%% 					skip;
-%% 				P ->
-%% 					?DEBUG("xxxx_send_ack 01 ::::> RegName=~p ; pid=~p ", [RegName,P] ),
-%% 					RegName!ack
-%% 			end;
+			%% XXX : 这里同时要响应 服务器发给接收端的 ACK 请求，接收端的 answer 信息，在此处理
+			%% 如果接收端的 answer 信息不处理，那么缺省时间后，接收端会被迫下线
+			%% 2014-2-27 : 
+			%% 2014-3-5 : 这里把确认机制放到外部模块来处理，此逻辑正式退役；
+			%% ACK_ID = list_to_atom(SRC_ID_STR),
+			%% case ejabberd_sm:ack(get,ACK_ID) of 
+			%% 	{ok,PPP} ->
+			%% 		?DEBUG("xxxx_send_ack_01 do ::::> ACK_ID=~p ; pid=~p ", [ACK_ID,PPP] ),
+			%% 		PPP!{ack,ACK_ID};
+			%% 	_ ->
+			%% 		?DEBUG("xxxx_send_ack_02 skip ::::> ACK_ID=~p ", [ACK_ID] ),
+			%% 		skip
+			%% end;
 		_ ->
 			?DEBUG("~p", [skip_00] ),
 			skip
@@ -270,10 +293,15 @@ user_receive_packet_handler(JID, From, To, Packet) ->
 	%% ?INFO_MSG("~n************** my_hookhandler user_receive_packet_handler <<<<<<<<<<<<<<<~p~n ",[liangchuan_debug]),
 	ok.
 
+timestamp() ->  
+	{M, S, _} = os:timestamp(),  
+	M * 1000000 + S.
+
+
 %% ====================================================================
 %% Behavioural functions 
 %% ====================================================================
--record(state, {}).
+-record(state, {t_host,t_port=9090}).
 
 init([]) ->
 	?INFO_MSG("INIT_START >>>>>>>>>>>>>>>>>>>>>>>> ~p",[liangchuan_debug]),  
@@ -292,20 +320,39 @@ init([]) ->
 		%?INFO_MSG("#### roster_out_subscription Host=~p~n",[Host])
   	  end, ?MYHOSTS),
 	?INFO_MSG("INIT_END <<<<<<<<<<<<<<<<<<<<<<<<< ~p",[liangchuan_debug]),
-    {ok, #state{}}.
+	%% 2014-3-4 : 在这个 HOOK 初始化时，启动一个thrift 客户端，同步数据到缓存服务器
+	[Domain|_] = ?MYHOSTS, 
+	[{ip,THost},{port,TPort}] = ejabberd_config:get_local_option({sync_packet,Domain}),
+	?INFO_MSG("========> THost=~p ; TPort=~p ",[THost,TPort]),
+	%% 启动5281端口，接收内网回调
+	aa_inf_server:start(),
+    {ok, #state{t_host=THost,t_port=TPort}}.
 
-handle_call(Request, From, State) ->
-    Reply = ok,
-    {reply, Reply, State}.
-handle_cast(Msg, State) ->
-    {noreply, State}.
-handle_info(Info, State) ->
-    {noreply, State}.
-terminate(Reason, State) ->
-    ok.
-code_change(OldVsn, State, Extra) ->
-    {ok, State}.
+%% K 是一个 string 或 binary
+handle_call({sync_packet,KState,K,Packet}, From, State) ->
+	%% XXX 这是一个协议，所有入库的消息，都用 bucket_时间戳-秒 为key，1秒1桶分割数据
+	Index = "bucket_"++integer_to_list(timestamp()),
+	%% XXX 入库数据协议是，{node(),5281,"状态",Packet} , 这个结构固定下来
+	%% 其中 node() 和 5281 是回调用的
+	V = term_to_binary({node(),5281,KState,Packet}),
 
+	%% TODO 2014-3-4 ::> 这里留一个待处理问题,这个连接需要做成连接池，可以用 mnesia 或者 ets，否则效率不高
+	{ok,C0} = thrift_client_util:new(State#state.t_host,State#state.t_port, ecache_thrift, []),	
+	%% 插数据
+	?DEBUG("==== sync_packet ===> insert key=~p",[K]),
+	{C1, R1} =  thrift_client:call(C0, cmd, [["SET",K,V]]),
+	%% 插索引
+	%% 仅当 KState == new 时，即一个新消息时产生索引，否则都是更新消息状态
+	%% 2014-3-6 : 因为索引会被清，所以只要改编状态就应该新建索引，旧的索引一直都会被清除
+	?DEBUG("==== sync_packet ===> index key=~p",[Index]),
+	{_, R2} =  thrift_client:call(C1, cmd, [["SADD",Index,K]]),
+	thrift_client:close(C1),
+	{reply, R1, State}.
+
+handle_cast(Msg, State) -> {noreply, State}.
+handle_info(Info, State) -> {noreply, State}.
+terminate(Reason, State) -> ok.
+code_change(OldVsn, State, Extra) -> {ok, State}.
 %% ====================================================================
 %% Internal functions
 %% ====================================================================

@@ -71,16 +71,16 @@ start(Module, SockMod, Socket, Opts) ->
 			%% SockMod = gen_tcp
 	    	{ReceiverMod, Receiver, RecRef} = case catch SockMod:custom_receiver(Socket) of
 		    	{receiver, RecMod, RecPid} ->
-					?DEBUG("[Track:ejabberd_socket:0001]:::::::> ReceiverMod=~p, Receiver=~p, RecRef=~p",[RecMod, RecPid, RecMod]),
+					%% ?DEBUG("[Track:ejabberd_socket:0001]:::::::> ReceiverMod=~p, Receiver=~p, RecRef=~p",[RecMod, RecPid, RecMod]),
 					{RecMod, RecPid, RecMod};
 		    	_ ->
 					RecPid = ejabberd_receiver:start(Socket, SockMod, none, MaxStanzaSize),
-					?DEBUG("[Track:ejabberd_socket:0002]:::::::> ReceiverMod=~p, Receiver=~p, RecRef=~p",[ejabberd_receiver, RecPid, RecPid]),
+					%% ?DEBUG("[Track:ejabberd_socket:0002]:::::::> ReceiverMod=~p, Receiver=~p, RecRef=~p",[ejabberd_receiver, RecPid, RecPid]),
 					{ejabberd_receiver, RecPid, RecPid}
 			end,
 	    	
 			SocketData = #socket_state{sockmod = SockMod,socket = Socket,receiver = RecRef},
-			?DEBUG("[Track:ejabberd_socket:0003]:::::::> SocketData=~p",[SocketData]),
+			%% ?DEBUG("[Track:ejabberd_socket:0003]:::::::> SocketData=~p",[SocketData]),
 			
 			%%真正的处理在这执行 ejabberd_c2s:start/2,哈哈哈
 			%% ReceiverMod = ejabberd_receiver，Receiver 是 ejabberd_receiver 模块的实例

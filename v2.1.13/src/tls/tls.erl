@@ -189,7 +189,7 @@ recv_data(TLSSock, Packet, Length) ->
     end.
 
 recv_data1(#tlssock{tcpsock = TCPSocket, tlsport = Port}, Packet, Length) ->
-	PortInfo = erlang:port_info(Port),
+	%% PortInfo = erlang:port_info(Port),
 	%% ?DEBUG("tls:recv_data1/3 ====>: PortInfo=~p ; Packet=~p~n", [PortInfo,Packet]),
 	%% name = tls_drv
     case port_control(Port, ?SET_ENCRYPTED_INPUT, Packet) of
@@ -226,7 +226,7 @@ send(#tlssock{tcpsock = TCPSocket, tlsport = Port} = TLSSock, Packet) ->
 				<<0, Out/binary>> ->
 					%% ?DEBUG("xxxxxx tls:send :::> gen_tcp:send :::> ~p~n",[<<0>>]),
 					%% ?DEBUG("xxxxxx tls:send :::> gen_tcp:send :::> Out=~p~n",[Out]),
-		    			R = gen_tcp:send(TCPSocket, Out),
+		    			gen_tcp:send(TCPSocket, Out);
 					%% ?DEBUG("xxxxxx tls:send :::> gen_tcp:send :::> R=~p~n",[R]);
 				<<1, Error/binary>> ->
 					%% ?DEBUG("xxxxxx tls:send :::> gen_tcp:send :::> ~p ; Error=~p~n",[<<1>>,Error]),
