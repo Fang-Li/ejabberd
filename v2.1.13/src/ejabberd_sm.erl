@@ -709,22 +709,27 @@ route_message(From, To, Packet) ->
 				"error" ->
 				    ok;
 				"groupchat" ->
+				    	?DEBUG("**************** ~p",["groupchat"]),
 					bounce_offline_message(From, To, Packet);
 				"headline" ->
-				    bounce_offline_message(From, To, Packet);
+				    	?DEBUG("**************** ~p",["headline"]),
+				    	bounce_offline_message(From, To, Packet);
 				_ ->
 				    case ejabberd_auth:is_user_exists(LUser, LServer) of
 						true ->
+				    			?DEBUG("**************** ~p",["is_user_exists"]),
 						    case is_privacy_allow(From, To, Packet) of
 								true ->
 									LOG_MSG = [route_message_offline_message_hook,LServer, From, To, Packet],
 									?INFO_MSG("~p~n LServer=~p~n From=~p~n To=~p~n Packet=~p~n",LOG_MSG),
+				    					?DEBUG("**************** ~p",["is_privacy_allow"]),
 									ejabberd_hooks:run(offline_message_hook,LServer,[From, To, Packet]);
 								false ->
 								    ok
 						    end;
 						_ ->
 						    Err = jlib:make_error_reply(Packet, ?ERR_SERVICE_UNAVAILABLE),
+				    			?DEBUG("**************** ~p; Err=~p",["not is_privacy_allow",Err]),
 						    ejabberd_router:route(To, From, Err)
 				    end
 		    end

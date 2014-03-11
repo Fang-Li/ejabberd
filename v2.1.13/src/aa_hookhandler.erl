@@ -18,12 +18,24 @@
 	 user_send_packet_handler/3,
 	 offline_message_hook_handler/3,
 	 roster_in_subscription_handler/6,
-	 user_receive_packet_handler/4
-	 %roster_out_subscription_handler/6
+	 user_receive_packet_handler/4,
+	 sm_register_connection_hook_handler/3,
+	 sm_remove_connection_hook_handler/3,
+	 user_available_hook_handler/1
 ]).
 
+sm_register_connection_hook_handler(SID, JID, Info) -> 
+	?INFO_MSG("@@@@@@@@@@@@@@@@ sm_register_connection_hook_handler :::> {SID,JID,Info}=~p",[{SID,JID,Info}]),
+	ok.
+sm_remove_connection_hook_handler(SID, JID, Info) -> 
+	?INFO_MSG("@@@@@@@@@@@@@@@@ sm_remove_connection_hook_handler :::> {SID,JID,Info}=~p",[{SID,JID,Info}]),
+	ok.
+user_available_hook_handler(JID) -> 
+	?INFO_MSG("@@@@@@@@@@@@@@@@ user_available_hook_handler :::> JID=~p",[JID]),
+	ok.
+
 start_link() ->
-	{ok,Pid} = gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 	
 %% Message 有时是长度大于1的列表，所以这里要遍历
 %% 如果列表中有多个要提取的关键字，我就把他们组合成一个 List
@@ -298,6 +310,7 @@ timestamp() ->
 	M * 1000000 + S.
 
 
+
 %% ====================================================================
 %% Behavioural functions 
 %% ====================================================================
@@ -309,13 +322,21 @@ init([]) ->
 	  fun(Host) ->
 		?INFO_MSG("#### _begin Host=~p~n",[Host]),
 		ejabberd_hooks:add(user_send_packet,Host,?MODULE, user_send_packet_handler ,80),
-	    ?INFO_MSG("#### user_send_packet Host=~p~n",[Host]),
+	    	?INFO_MSG("#### user_send_packet Host=~p~n",[Host]),
 		ejabberd_hooks:add(roster_in_subscription,Host,?MODULE, roster_in_subscription_handler ,90),
 		?INFO_MSG("#### roster_in_subscription Host=~p~n",[Host]),
 		ejabberd_hooks:add(offline_message_hook, Host, ?MODULE, offline_message_hook_handler, 45),
 		?INFO_MSG("#### offline_message_hook Host=~p~n",[Host]),
 		ejabberd_hooks:add(user_receive_packet, Host, ?MODULE, user_receive_packet_handler, 45),
-		?INFO_MSG("#### user_receive_packet Host=~p~n",[Host])
+		?INFO_MSG("#### user_receive_packet Host=~p~n",[Host]),
+
+		ejabberd_hooks:add(sm_register_connection_hook, Host, ?MODULE, sm_register_connection_hook_handler, 45),
+		?INFO_MSG("#### sm_register_connection_hook_handler Host=~p~n",[Host]),
+		ejabberd_hooks:add(sm_remove_connection_hook, Host, ?MODULE, sm_remove_connection_hook_handler, 45),
+		?INFO_MSG("#### sm_remove_connection_hook_handler Host=~p~n",[Host]),
+		ejabberd_hooks:add(user_available_hook, Host, ?MODULE, user_available_hook_handler, 45),
+		?INFO_MSG("#### user_available_hook_handler Host=~p~n",[Host])
+
 		%ejabberd_hooks:add(roster_out_subscription,Host,?MODULE, roster_out_subscription_handler ,90),
 		%?INFO_MSG("#### roster_out_subscription Host=~p~n",[Host])
   	  end, ?MYHOSTS),
@@ -342,7 +363,6 @@ handle_call({sync_packet,KState,K,Packet}, From, State) ->
 	?DEBUG("==== sync_packet ===> insert key=~p",[K]),
 	{C1, R1} =  thrift_client:call(C0, cmd, [["SET",K,V]]),
 	%% 插索引
-	%% 仅当 KState == new 时，即一个新消息时产生索引，否则都是更新消息状态
 	%% 2014-3-6 : 因为索引会被清，所以只要改编状态就应该新建索引，旧的索引一直都会被清除
 	?DEBUG("==== sync_packet ===> index key=~p",[Index]),
 	{_, R2} =  thrift_client:call(C1, cmd, [["SADD",Index,K]]),

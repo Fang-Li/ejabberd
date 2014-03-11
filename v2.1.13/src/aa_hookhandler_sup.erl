@@ -22,7 +22,14 @@ init([]) ->
 			worker,
 			[aa_hookhandler]
 	},
-    {ok, {{one_for_one, 5, 10}, [AAHookhandler]}}.
+	AAOfflineMod ={
+			aa_offline_mod,{aa_offline_mod, start_link, []},
+			permanent,
+			brutal_kill,
+			worker,
+			[aa_offline_mod]
+	},
+    {ok, {{one_for_one, 5, 10}, [AAHookhandler,AAOfflineMod]}}.
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================

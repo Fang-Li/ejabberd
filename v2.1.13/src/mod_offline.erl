@@ -71,10 +71,11 @@ start(Host, Opts) ->
         _ ->
             ok
     end,
-    ejabberd_hooks:add(offline_message_hook, Host,
-		       ?MODULE, store_packet, 50),
-    ejabberd_hooks:add(resend_offline_messages_hook, Host,
-		       ?MODULE, pop_offline_messages, 50),
+    %% XXX 2014-3-10 : 离线消息模块移到外部实现
+    %% 这里不能直接注销离线模块，会报错，那么不存离线消息即可
+    ejabberd_hooks:add(offline_message_hook, Host, ?MODULE, store_packet, 50),
+    ejabberd_hooks:add(resend_offline_messages_hook, Host, ?MODULE, pop_offline_messages, 50),
+    
     ejabberd_hooks:add(remove_user, Host,
 		       ?MODULE, remove_user, 50),
     ejabberd_hooks:add(anonymous_purge_hook, Host,
@@ -206,8 +207,7 @@ receive_all(US, Msgs, DBType) ->
     end.
 
 stop(Host) ->
-    ejabberd_hooks:delete(offline_message_hook, Host,
-			  ?MODULE, store_packet, 50),
+    ejabberd_hooks:delete(offline_message_hook, Host, ?MODULE, store_packet, 50),
     ejabberd_hooks:delete(resend_offline_messages_hook, Host,
 			  ?MODULE, pop_offline_messages, 50),
     ejabberd_hooks:delete(remove_user, Host,
@@ -242,6 +242,8 @@ get_sm_features(Acc, _From, _To, _Node, _Lang) ->
 
 
 store_packet(From, To, Packet) ->
+	stop.
+store_packet(bak,From, To, Packet) ->
     Type = xml:get_tag_attr_s("type", Packet),
     if
 	(Type /= "error") and (Type /= "groupchat") and

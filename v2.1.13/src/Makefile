@@ -74,7 +74,7 @@ ifeq (, pam)
   INSTALL_EPAM=install -m 750 $(O_USER) epam $(PBINDIR)
 endif
 
-prefix = /app/ejabberd/runtime
+prefix = /home/liangc/ejabberd
 exec_prefix = ${prefix}
 
 SUBDIRS = mod_irc mod_pubsub mod_muc mod_proxy65 eldap  web stringprep stun tls  ejabberd_zlib
@@ -187,7 +187,7 @@ install: all
 	[ -f $(ETCDIR)/ejabberd.cfg ] \
 		&& install -b -m 640 $(G_USER) ejabberd.cfg.example $(ETCDIR)/ejabberd.cfg-new \
 		|| install -b -m 640 $(G_USER) ejabberd.cfg.example $(ETCDIR)/ejabberd.cfg
-	sed -e "s*@rootdir@*/app/ejabberd/runtime*" \
+	sed -e "s*@rootdir@*/home/liangc/ejabberd*" \
 		-e "s*@installuser@*liangc*" \
 		-e "s*@LIBDIR@*${exec_prefix}/lib*" \
 		-e "s*@SYSCONFDIR@*${prefix}/etc*" \
