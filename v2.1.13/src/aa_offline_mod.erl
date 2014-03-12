@@ -29,7 +29,9 @@ start_link() ->
 getTime(Time) when is_binary(Time) ->
 	{ok,erlang:binary_to_integer(Time)};
 getTime(Time) when is_list(Time) ->
-	{ok,erlang:list_to_integer(Time)}.
+	{ok,erlang:list_to_integer(Time)};
+getTime([]) ->
+	{ok,timestamp()}.
 
 sm_register_connection_hook_handler(SID, JID, Info) -> 
 	ok.
@@ -72,7 +74,7 @@ offline_message_hook_handler(From, To, Packet) ->
 	if
 		(Type =/= "error") and (Type =/= "groupchat") and (Type =/= "headline") ->
 			Time = xml:get_tag_attr_s("msgTime", Packet),
-			?INFO_MSG("ERROR++++++++++++++++ Time=~p;~n~nPacket=~p",[Time,Packet]),
+			%% ?INFO_MSG("ERROR++++++++++++++++ Time=~p;~n~nPacket=~p",[Time,Packet]),
 			{ok,TimeStamp} = getTime(Time),
 			%% 7天以后过期
 			Exp = ?EXPIRE+TimeStamp,
