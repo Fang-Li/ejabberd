@@ -232,7 +232,7 @@ user_send_packet_handler(From, To, Packet) ->
 			?DEBUG("ack_from=~p ; Domain=~p ; T=~p ; MT=~p",[ACK_FROM,Domain,T,MT]),
 			%% XXX : 第一个逻辑，ack 由服务器向发送方发出响应，表明服务器已经收到此信息
 			%% 应答消息，要应答到 from 上
-			if ACK_FROM , T=/="normal",MT=:="normalchat" ->
+			if ACK_FROM , MT=:="normalchat" ->
 				case dict:is_key("from", D) of 
 					true -> 
 						Attributes = [
@@ -269,7 +269,7 @@ user_send_packet_handler(From, To, Packet) ->
 			%% TODO 2014-3-4 : 在这里新建包，状态分::> new -> offline / ack
 			%% 我要判断消息是不是一个聊天消息，如果是 ack 消息，则改变消息状态为 ack
 			if
-				ACK_FROM,MT=:="normalchat" ->
+				ACK_FROM,MT=/=[],MT=/="msgStatus" ->
 					SyncRes = gen_server:call(?MODULE,{sync_packet,new,SRC_ID_STR,Packet}),
 					?DEBUG("===========> SYNC_RES new => ~p ; ID=~p",[SyncRes,SRC_ID_STR]);
 				ACK_FROM,MT=:="msgStatus",T=:="normal" ->
