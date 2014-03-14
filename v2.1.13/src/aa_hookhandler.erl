@@ -66,7 +66,7 @@ get_text_message_form_packet_result( Body )->
 
 %% 离线消息处理器
 %% 钩子回调
-offline_message_hook_handler(From, To, Packet) ->
+offline_message_hook_handler(From, #jid{server=Domain}=To, Packet) ->
         try
                 ?INFO_MSG("FFFFFFFFFFFFFFFFF===From=~p~nTo=~p~nPacket=~p~n",[From, To, Packet]),
                 {xmlelement,"message",Header,_ } = Packet,
@@ -89,7 +89,7 @@ offline_message_hook_handler(From, To, Packet) ->
                                 case catch ejabberd_config:get_local_option({ack_from ,Domain}) of
                                         true->
                                                 offline_message_hook_handler( From, To, Packet, D, MID );
-                                        false->
+                                        _->
                                                 %% 宠物那边走这个逻辑
                                                 case V of "normalchat" -> offline_message_hook_handler( From, To, Packet, D, MID ); _-> skip end
                                 end
