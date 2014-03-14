@@ -66,7 +66,7 @@ get_text_message_form_packet_result( Body )->
 
 %% 离线消息处理器
 %% 钩子回调
-offline_message_hook_handler(From, #jid{server=Domain}=To, Packet) ->
+offline_message_hook_handler(#jid{user=FromUser}=From, #jid{server=Domain}=To, Packet) ->
         try
                 ?INFO_MSG("FFFFFFFFFFFFFFFFF===From=~p~nTo=~p~nPacket=~p~n",[From, To, Packet]),
                 {xmlelement,"message",Header,_ } = Packet,
@@ -76,23 +76,27 @@ offline_message_hook_handler(From, #jid{server=Domain}=To, Packet) ->
                 case V of
                         "msgStatus" ->
                                 ok;
-                        _->
-                                %% 2014-3-5 : 当消息离线时，要更改存储模块中对应的消息状态
-                                MID = case dict:is_key("id", D) of
-                                        true ->
-                                                ID = dict:fetch("id", D),
-                                                SyncRes = gen_server:call(?MODULE,{sync_packet,offline,ID,Packet}),
-                                                ?DEBUG("===========> SYNC_RES offline => ~p ; ID=~p",[SyncRes,ID]),
-                                                ID;
-                                        _ -> ""
-                                end,
-                                case catch ejabberd_config:get_local_option({ack_from ,Domain}) of
-                                        true->
-                                                offline_message_hook_handler( From, To, Packet, D, MID );
-                                        _->
-                                                %% 宠物那边走这个逻辑
-                                                case V of "normalchat" -> offline_message_hook_handler( From, To, Packet, D, MID ); _-> skip end
-                                end
+			_->
+                        	if FromUser=/="messageack" ->
+                               		 %% 2014-3-5 : 当消息离线时，要更改存储模块中对应的消息状态
+                               		 MID = case dict:is_key("id", D) of
+                               		         true ->
+                               		                 ID = dict:fetch("id", D),
+                               		                 SyncRes = gen_server:call(?MODULE,{sync_packet,offline,ID,Packet}),
+                               		                 ?DEBUG("===========> SYNC_RES offline => ~p ; ID=~p",[SyncRes,ID]),
+                               		                 ID;
+                               		         _ -> ""
+                               		 end,
+                               		 case catch ejabberd_config:get_local_option({ack_from ,Domain}) of
+                               		         true->
+                               		                 offline_message_hook_handler( From, To, Packet, D, MID );
+                               		         _->
+                               		                 %% 宠物那边走这个逻辑
+                               		                 case V of "normalchat" -> offline_message_hook_handler( From, To, Packet, D, MID ); _-> skip end
+                               		 end;
+				true->
+					 ok
+				end
                 end
         catch
                 _:_ -> ok
