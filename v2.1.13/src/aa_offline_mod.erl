@@ -72,16 +72,15 @@ sm_remove_connection_hook_handler(SID, JID, Info) ->
 %% 离线消息事件
 %% 保存离线消息
 %% msgTime="1394444235"
-offline_message_hook_handler(#jid{user=User}=From, To, Packet) ->
+offline_message_hook_handler(#jid{user=FromUser}=From, #jid{user=User,server=Domain}=To, Packet) ->
 	Type = xml:get_tag_attr_s("type", Packet),
 	if
-		(User=/="messageack") and (Type =/= "error") and (Type =/= "groupchat") and (Type =/= "headline") ->
+		(FromUser=/="messageack") and (Type =/= "error") and (Type =/= "groupchat") and (Type =/= "headline") ->
 			Time = xml:get_tag_attr_s("msgTime", Packet),
 			%% ?INFO_MSG("ERROR++++++++++++++++ Time=~p;~n~nPacket=~p",[Time,Packet]),
 			{ok,TimeStamp} = getTime(Time),
 			%% 7天以后过期
 			Exp = ?EXPIRE+TimeStamp,
-			{jid,User,Domain,_,_,_,_} = To,
 			KEY = User++"@"++Domain++"/offline_msg",
 			?INFO_MSG("::::store_offline_msg::::>type=~p;time=~p;timestamp=~p;~n~nKEY=~p~n~n",[Type,Time,TimeStamp,KEY]),
 			Offline_Msg = #offline_msg{ timestamp = TimeStamp,
