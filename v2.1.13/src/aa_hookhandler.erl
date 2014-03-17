@@ -25,13 +25,13 @@
 ]).
 
 sm_register_connection_hook_handler(SID, JID, Info) -> 
-	?INFO_MSG("@@@@@@@@@@@@@@@@ sm_register_connection_hook_handler :::> {SID,JID,Info}=~p",[{SID,JID,Info}]),
+	%% ?DEBUG("@@@@@@@@@@@@@@@@ sm_register_connection_hook_handler :::> {SID,JID,Info}=~p",[{SID,JID,Info}]),
 	ok.
 sm_remove_connection_hook_handler(SID, JID, Info) -> 
-	?INFO_MSG("@@@@@@@@@@@@@@@@ sm_remove_connection_hook_handler :::> {SID,JID,Info}=~p",[{SID,JID,Info}]),
+	%% ?DEBUG("@@@@@@@@@@@@@@@@ sm_remove_connection_hook_handler :::> {SID,JID,Info}=~p",[{SID,JID,Info}]),
 	ok.
 user_available_hook_handler(JID) -> 
-	?INFO_MSG("@@@@@@@@@@@@@@@@ user_available_hook_handler :::> JID=~p",[JID]),
+	%% ?DEBUG("@@@@@@@@@@@@@@@@ user_available_hook_handler :::> JID=~p",[JID]),
 	ok.
 
 start_link() ->
@@ -55,7 +55,7 @@ get_text_message_from_packet( Packet )->
 	{xmlelement,"message",_,Message } = Packet,
 	%% Message 结构不固定，需要遍历
 	List = feach_message(Message,[]),
-	?INFO_MSG("~p ==== ~p ",[liangc_debug_offline_message,List]),
+	?DEBUG("~p ==== ~p ",[liangc_debug_offline_message,List]),
 	List.
 
 %% 获取消息包中的文本消息，用于离线消息推送服务
@@ -68,7 +68,7 @@ get_text_message_form_packet_result( Body )->
 %% 钩子回调
 offline_message_hook_handler(#jid{user=FromUser}=From, #jid{server=Domain}=To, Packet) ->
         try
-                ?INFO_MSG("FFFFFFFFFFFFFFFFF===From=~p~nTo=~p~nPacket=~p~n",[From, To, Packet]),
+                ?DEBUG("FFFFFFFFFFFFFFFFF===From=~p~nTo=~p~nPacket=~p~n",[From, To, Packet]),
                 {xmlelement,"message",Header,_ } = Packet,
                 %%这里只推送 msgtype=normalchat 的消息，以下是判断
                 D = dict:from_list(Header),
@@ -139,7 +139,7 @@ send_offline_message(From ,To ,Packet,Type,MID )->
 		{"params",{obj,[{"fromname",FN},{"toname",TN},{"msg",MSG},{"type",T},{"id",MSG_ID}]} } 
 	]},
 	Form = "body="++rfc4627:encode(ParamObj),
-	?INFO_MSG("MMMMMMMMMMMMMMMMM===Form=~p~n",[Form]),
+	?DEBUG("MMMMMMMMMMMMMMMMM===Form=~p~n",[Form]),
 	case httpc:request(post,{ HTTPTarget ,[], ?HTTP_HEAD , Form },[],[] ) of   
         	{ok, {_,_,Body}} ->
  			case rfc4627:decode(Body) of
@@ -147,7 +147,7 @@ send_offline_message(From ,To ,Packet,Type,MID )->
 					case rfc4627:get_field(Obj,"success") of
 						{ok,false} ->
 							{ok,Entity} = rfc4627:get_field(Obj,"entity"),
-							?INFO_MSG("liangc-push-msg error: ~p~n",[binary_to_list(Entity)]);
+							?DEBUG("liangc-push-msg error: ~p~n",[binary_to_list(Entity)]);
 						_ ->
 							false
 					end;
@@ -155,15 +155,15 @@ send_offline_message(From ,To ,Packet,Type,MID )->
 					false
  			end ;
         	{error, Reason} ->
- 			?INFO_MSG("[~ERROR~] cause ~p~n",[Reason])
+ 			?DEBUG("[~ERROR~] cause ~p~n",[Reason])
      	end,
 	ok.
 
 %roster_in_subscription(Acc, User, Server, JID, SubscriptionType, Reason) -> bool()
 roster_in_subscription_handler(Acc, User, Server, JID, SubscriptionType, Reason) ->
-	?INFO_MSG("~n~p; Acc=~p ; User=~p~n Server=~p ; JID=~p ; SubscriptionType=~p ; Reason=~p~n ", [liangchuan_debug,Acc, User, Server, JID, SubscriptionType, Reason] ),
+	?DEBUG("~n~p; Acc=~p ; User=~p~n Server=~p ; JID=~p ; SubscriptionType=~p ; Reason=~p~n ", [liangchuan_debug,Acc, User, Server, JID, SubscriptionType, Reason] ),
 	{jid,ToUser,Domain,_,_,_,_}=JID,
-	?INFO_MSG("XXXXXXXX===~p",[SubscriptionType]),
+	?DEBUG("XXXXXXXX===~p",[SubscriptionType]),
 	case lists:member(SubscriptionType,[subscribe,subscribed,unsubscribed]) of 
 		true -> 
 			sync_user(Domain,User,ToUser,SubscriptionType);
@@ -186,7 +186,7 @@ sync_user(Domain,FromUser,ToUser,SType) ->
 	JsonParam = rfc4627:encode(PostBody),
 	ParamBody = "body="++JsonParam,
 	URL = HTTPServer++HTTPService++"?"++ParamBody,
-	?INFO_MSG("~p: ~p~n ",[liangchuan_debug,URL]),
+	?DEBUG("~p: ~p~n ",[liangchuan_debug,URL]),
 	Form = lists:concat([ParamBody]),
 	case httpc:request(post,{ HTTPTarget, [], ?HTTP_HEAD, Form },[],[] ) of   
         	{ok, {_,_,Body}} ->
@@ -196,7 +196,7 @@ sync_user(Domain,FromUser,ToUser,SType) ->
 					case rfc4627:get_field(Obj,"success") of
 						{ok,false} ->	
 							{ok,Entity} = rfc4627:get_field(Obj,"entity"),
-							?INFO_MSG("liangc-sync-user error: ~p~n",[binary_to_list(Entity)]);
+							?DEBUG("liangc-sync-user error: ~p~n",[binary_to_list(Entity)]);
 						_ ->
 							false
 					end;
@@ -204,9 +204,9 @@ sync_user(Domain,FromUser,ToUser,SType) ->
 					false
 			end ;
         	{error, Reason} ->
-			?INFO_MSG("[~ERROR~] cause ~p~n",[Reason])
+			?DEBUG("[~ERROR~] cause ~p~n",[Reason])
     	end,
-	?INFO_MSG("[--OKOKOKOK--] ~p was done.~n",[addOrRemoveFriend]),
+	?DEBUG("[--OKOKOKOK--] ~p was done.~n",[addOrRemoveFriend]),
 	ok.
 
 %roster_out_subscription(Acc, User, Server, JID, SubscriptionType, Reason) -> bool()
@@ -215,8 +215,8 @@ sync_user(Domain,FromUser,ToUser,SType) ->
 
 %user_send_packet(From, To, Packet) -> ok
 user_send_packet_handler(From, To, Packet) ->
-	?INFO_MSG("~n************** my_hookhandler user_send_packet_handler >>>>>>>>>>>>>>>~p~n ",[liangchuan_debug]),
-	?INFO_MSG("~n~pFrom=~p ; To=~p ; Packet=~p~n ", [liangchuan_debug,From, To, Packet] ),
+	?DEBUG("~n************** my_hookhandler user_send_packet_handler >>>>>>>>>>>>>>>~p~n ",[liangchuan_debug]),
+	?DEBUG("~n~pFrom=~p ; To=~p ; Packet=~p~n ", [liangchuan_debug,From, To, Packet] ),
 	%% From={jid,"cc","test.com","Smack","cc","test.com","Smack"}
 	[_,E|_] = tuple_to_list(Packet),
 	{jid,_,Domain,_,_,_,_} = To,
@@ -307,14 +307,14 @@ user_send_packet_handler(From, To, Packet) ->
 			?DEBUG("~p", [skip_00] ),
 			skip
 	end,
-	?INFO_MSG("~n************** my_hookhandler user_send_packet_handler <<<<<<<<<<<<<<<~p~n ",[liangchuan_debug]),
+	?DEBUG("~n************** my_hookhandler user_send_packet_handler <<<<<<<<<<<<<<<~p~n ",[liangchuan_debug]),
 	ok.
 
 user_receive_packet_handler(JID, From, To, Packet) ->
 	%% 这个事件，没用，因为 session 管理本身就有 bug
-	%% ?INFO_MSG("~n************** my_hookhandler user_receive_packet_handler >>>>>>>>>>>>>>>~p~n ",[liangchuan_debug]),
+	%% ?DEBUG("~n************** my_hookhandler user_receive_packet_handler >>>>>>>>>>>>>>>~p~n ",[liangchuan_debug]),
 	%% ?DEBUG("JID=~p ; From=~p ; To=~p ; Packet=~p", [JID, From, To, Packet] ),
-	%% ?INFO_MSG("~n************** my_hookhandler user_receive_packet_handler <<<<<<<<<<<<<<<~p~n ",[liangchuan_debug]),
+	%% ?DEBUG("~n************** my_hookhandler user_receive_packet_handler <<<<<<<<<<<<<<<~p~n ",[liangchuan_debug]),
 	ok.
 
 timestamp() ->  
@@ -329,7 +329,7 @@ timestamp() ->
 -record(state, {t_host,t_port=9090}).
 
 init([]) ->
-	?INFO_MSG("INIT_START >>>>>>>>>>>>>>>>>>>>>>>> ~p",[liangchuan_debug]),  
+	?DEBUG("INIT_START >>>>>>>>>>>>>>>>>>>>>>>> ~p",[liangchuan_debug]),  
 	lists:foreach(
 	  fun(Host) ->
 		?INFO_MSG("#### _begin Host=~p~n",[Host]),
