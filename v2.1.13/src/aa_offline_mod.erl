@@ -37,14 +37,17 @@ sm_register_connection_hook_handler(SID, JID, Info) ->
 	ok.
 
 user_available_hook_handler(JID) ->
+	send_offline_msg(JID).
+
+send_offline_msg(JID) ->
 	%% JID={jid,"cc","test.com","Smack","cc","test.com","Smack"} 
 	{jid,User,Domain,_,_,_,_} = JID,
 	KEY = User++"@"++Domain++"/offline_msg",
-	?INFO_MSG("@@@@@@@@@@@@@@@@ sm_register_connection_hook_handler :::> {SID,JID,Info}=~p;KEY=~p",[JID,KEY]),
+	?INFO_MSG("@@@@@@@@@@@@@@@@ send_offline_msg :::> KEY=~p >>>>>>>>>>>>>>>>>>>>>>>",[KEY]),
 	R = gen_server:call(?MODULE,{range_offline_msg,KEY}),
-	?INFO_MSG("@@@@@@@@@@@@@@@@ sm_register_connection_hook_handler :::> Result=~p~n~n",[R]),
 	%% TODO 这里，如果发送失败了，是需要重新发送的，但是先让他跑起来
 	{ok,ML} = R,
+	?INFO_MSG("@@@@@@@@@@@@@@@@ send_offline_msg :::> KEY=~p ; Result.size=~p~n",[KEY,length(ML)]),
 	lists:foreach(fun(OfflineMsg)->
 		Msg = erlang:binary_to_term(OfflineMsg),
 		#offline_msg{from=From,to=To,packet=Packet}=Msg,
@@ -52,12 +55,12 @@ user_available_hook_handler(JID) ->
 		    ok -> ok; 
 		    Err -> "Error: "++Err
 		end,
-		?INFO_MSG("send_offline_message ::> From=~p; To=~p; Packet=~p ",[From,To,Packet]),
+		?INFO_MSG("@@@@@@@ send_offline_message ::> KEY=~p; Packet=~p ",[KEY,Packet]),
 		ok
 	end,ML),	
 	%% XXX 这里的删除逻辑有待修正
 	Clear = gen_server:call(?MODULE,{clear_offline_msg,KEY}),
-	?INFO_MSG("clear_offline_message ::> ~p",[Clear]),
+	?INFO_MSG("@@@@@@ clear_offline_message ::>KEY=~p ; Clear=~p <<<<<<<<<<<<<<<<<",[KEY,Clear]),
 	ok.
 
 
@@ -69,10 +72,10 @@ sm_remove_connection_hook_handler(SID, JID, Info) ->
 %% 离线消息事件
 %% 保存离线消息
 %% msgTime="1394444235"
-offline_message_hook_handler(From, To, Packet) ->
+offline_message_hook_handler(#jid{user=User}=From, To, Packet) ->
 	Type = xml:get_tag_attr_s("type", Packet),
 	if
-		(Type =/= "error") and (Type =/= "groupchat") and (Type =/= "headline") ->
+		(User=/="messageack") and (Type =/= "error") and (Type =/= "groupchat") and (Type =/= "headline") ->
 			Time = xml:get_tag_attr_s("msgTime", Packet),
 			%% ?INFO_MSG("ERROR++++++++++++++++ Time=~p;~n~nPacket=~p",[Time,Packet]),
 			{ok,TimeStamp} = getTime(Time),
