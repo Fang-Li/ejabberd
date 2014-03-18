@@ -282,11 +282,11 @@ user_send_packet_handler(#jid{user=FU,server=FD}=From, To, Packet) ->
 			end,
 			%% 我要判断消息是不是一个聊天消息，如果是 ack 消息，则改变消息状态为 ack
 			if
-				ACK_FROM,MT=/=[],MT=/="msgStatus" ->
+				ACK_FROM,MT=/=[],MT=/="msgStatus",FU=/="messageack" ->
 					SyncRes = gen_server:call(?MODULE,{sync_packet,SRC_ID_STR,From,To,Packet}),
 					?DEBUG("===========> SYNC_RES new => ~p ; ID=~p",[SyncRes,SRC_ID_STR]);
 				ACK_FROM,MT=:="msgStatus" ->
-					KK = FU++"@"++FD,
+					KK = FU++"@"++FD++"/offline_msg",
 					gen_server:call(?MODULE,{ecache_cmd,["DEL",SRC_ID_STR]}),
 					gen_server:call(?MODULE,{ecache_cmd,["ZREM",KK,SRC_ID_STR]}),
 					?DEBUG("===========> SYNC_RES ack => ACK_USER=~p ; ACK_ID=~p",[KK,SRC_ID_STR]);

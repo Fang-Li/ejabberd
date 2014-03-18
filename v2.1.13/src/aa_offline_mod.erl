@@ -65,7 +65,7 @@ offline_message_hook_handler(#jid{user=FromUser}=From, #jid{user=User,server=Dom
 	Type = xml:get_tag_attr_s("type", Packet),
 	ID = xml:get_tag_attr_s("id", Packet),
 	if
-		(FromUser=/="messageack") and (Type =/= "error") and (Type =/= "groupchat") and (Type =/= "headline") ->
+		(FromUser=/="messageack") and (User=/="messageack") and (Type =/= "error") and (Type =/= "groupchat") and (Type =/= "headline") ->
 			Time = xml:get_tag_attr_s("msgTime", Packet),
 			%% ?INFO_MSG("ERROR++++++++++++++++ Time=~p;~n~nPacket=~p",[Time,Packet]),
 			{ok,TimeStamp} = getTime(Time),
