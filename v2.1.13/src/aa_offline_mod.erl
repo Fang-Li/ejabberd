@@ -26,18 +26,9 @@
 start_link() ->
 	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-getTime(Time) when is_binary(Time) ->
-	{ok,erlang:binary_to_integer(Time)};
-getTime(Time) when is_list(Time) ->
-	{ok,erlang:list_to_integer(Time)};
-getTime([]) ->
-	{ok,timestamp()}.
+sm_register_connection_hook_handler(SID, JID, Info) -> ok.
 
-sm_register_connection_hook_handler(SID, JID, Info) -> 
-	ok.
-
-user_available_hook_handler(JID) ->
-	send_offline_msg(JID).
+user_available_hook_handler(JID) -> send_offline_msg(JID).
 
 send_offline_msg(JID) ->
 	%% JID={jid,"cc","test.com","Smack","cc","test.com","Smack"} 
@@ -46,34 +37,33 @@ send_offline_msg(JID) ->
 	?INFO_MSG("@@@@@@@@@@@@@@@@ send_offline_msg :::> KEY=~p >>>>>>>>>>>>>>>>>>>>>>>",[KEY]),
 	R = gen_server:call(?MODULE,{range_offline_msg,KEY}),
 	%% TODO 这里，如果发送失败了，是需要重新发送的，但是先让他跑起来
-	{ok,ML} = R,
-	?INFO_MSG("@@@@@@@@@@@@@@@@ send_offline_msg :::> KEY=~p ; Result.size=~p~n",[KEY,length(ML)]),
-	lists:foreach(fun(OfflineMsg)->
-		Msg = erlang:binary_to_term(OfflineMsg),
-		#offline_msg{from=From,to=To,packet=Packet}=Msg,
-		Rtn = case ejabberd_router:route(From, To, Packet) of
-		    ok -> ok; 
-		    Err -> "Error: "++Err
+	?INFO_MSG("@@@@@@@@@@@@@@@@ send_offline_msg :::> KEY=~p ; R.size=~p~n",[KEY,length(R)]),
+	lists:foreach(fun(ID)->
+		try	
+			[Bin] = gen_server:call(?MODULE,{ecache_cmd,["GET",ID]}),
+			{FF,TT,PP} = erlang:binary_to_term(Bin),
+			Rtn = case ejabberd_router:route(FF, TT, PP) of
+			    ok -> ok; 
+			    Err -> "Error: "++Err
+			end,
+			?INFO_MSG("@@@@@@@ send_offline_message ::> KEY=~p; ID=~p ",[KEY,ID])
+		catch
+			E:I ->
+				?INFO_MSG("~p ; ~p",[E,I])	
 		end,
-		?INFO_MSG("@@@@@@@ send_offline_message ::> KEY=~p; Packet=~p ",[KEY,Packet]),
 		ok
-	end,ML),	
-	%% XXX 这里的删除逻辑有待修正
-	Clear = gen_server:call(?MODULE,{clear_offline_msg,KEY}),
-	?INFO_MSG("@@@@@@ clear_offline_message ::>KEY=~p ; Clear=~p <<<<<<<<<<<<<<<<<",[KEY,Clear]),
+	end,R),	
+	?INFO_MSG("@@@@@@ send_offline_message ::>KEY=~p  <<<<<<<<<<<<<<<<<",[KEY]),
 	ok.
 
 
-sm_remove_connection_hook_handler(SID, JID, Info) -> 
-	?INFO_MSG("@@@@@@@@@@@@@@@@ sm_remove_connection_hook_handler :::> {SID,JID,Info}=~p",[{SID,JID,Info}]),
-	ok.
-
+sm_remove_connection_hook_handler(SID, JID, Info) -> ok.
 
 %% 离线消息事件
 %% 保存离线消息
-%% msgTime="1394444235"
 offline_message_hook_handler(#jid{user=FromUser}=From, #jid{user=User,server=Domain}=To, Packet) ->
 	Type = xml:get_tag_attr_s("type", Packet),
+	ID = xml:get_tag_attr_s("id", Packet),
 	if
 		(FromUser=/="messageack") and (Type =/= "error") and (Type =/= "groupchat") and (Type =/= "headline") ->
 			Time = xml:get_tag_attr_s("msgTime", Packet),
@@ -82,14 +72,8 @@ offline_message_hook_handler(#jid{user=FromUser}=From, #jid{user=User,server=Dom
 			%% 7天以后过期
 			Exp = ?EXPIRE+TimeStamp,
 			KEY = User++"@"++Domain++"/offline_msg",
-			?INFO_MSG("::::store_offline_msg::::>type=~p;time=~p;timestamp=~p;~n~nKEY=~p~n~n",[Type,Time,TimeStamp,KEY]),
-			Offline_Msg = #offline_msg{ timestamp = TimeStamp,
-				     expire = Exp,
-				     from = From,
-				     to = To,
-				     packet = Packet},		
-			BinaryMsg = erlang:term_to_binary(Offline_Msg),
-			gen_server:call(?MODULE,{store_offline_msg,KEY,integer_to_list(TimeStamp),BinaryMsg});
+			?INFO_MSG("::::store_offline_msg::::>type=~p;timestamp=~p;KEY=~p",[Type,TimeStamp,KEY]),
+			gen_server:call(?MODULE,{store_offline_msg,KEY,integer_to_list(TimeStamp),ID});
 		true ->
 			ok
 	end.
@@ -97,7 +81,7 @@ offline_message_hook_handler(#jid{user=FromUser}=From, #jid{user=User,server=Dom
 %% ====================================================================
 %% Behavioural functions 
 %% ====================================================================
--record(state, {host,port=9090}).
+-record(state, { ecache_node, ecache_mod=ecache_server, ecache_fun=cmd }).
 
 init([]) ->
 	?INFO_MSG("INIT_START_OFFLINE_MOD >>>>>>>>>>>>>>>>>>>>>>>> ~p",[liangchuan_debug]),  
@@ -109,28 +93,35 @@ init([]) ->
 		ejabberd_hooks:add(user_available_hook, Host, ?MODULE, user_available_hook_handler, 40)
 	  end, ?MYHOSTS),
 	?INFO_MSG("INIT_END_OFFLINE_MOD <<<<<<<<<<<<<<<<<<<<<<<<< ~p",[liangchuan_debug]),
-	[Domain|_] = ?MYHOSTS, 
-	[{ip,THost},{port,TPort}] = ejabberd_config:get_local_option({sync_packet,Domain}),
-	{ok, #state{port=TPort,host=THost}}.
+	Conn = conn_ecache_node(),
+	{ok,_,Node} = Conn,
+	{ok, #state{ecache_node=Node}}.
 
 handle_cast(Msg, State) -> {noreply, State}.
-handle_call({clear_offline_msg,KEY},_From, State) -> 
-	{ok,C0} = thrift_client_util:new(State#state.host,State#state.port, ecache_thrift, []),	
-	{C1, R} =  thrift_client:call(C0, cmd, [["DEL",KEY]]),
-	thrift_client:close(C1),
+handle_call({clear_offline_msg,KEY,ID},_From, State) -> 
+	?DEBUG("##### clear_offline_msg at ack :::> Key=~p ; ID=~p",[KEY,ID]),
+	R = ecache_cmd(["ZREM",KEY,ID],State),
 	{reply,R,State};
 handle_call({range_offline_msg,KEY},_From, State) -> 
 	%% 倒序: zrevrange
 	%% 正序: zrange
-	{ok,C0} = thrift_client_util:new(State#state.host,State#state.port, ecache_thrift, []),	
-	{C1, R} =  thrift_client:call(C0, cmd, [["ZRANGE",KEY,"0","-1"]]),
-	thrift_client:close(C1),
+	R = ecache_cmd(["ZRANGE",KEY,"0","-1"],State),
+	?DEBUG("##### range_offline_msg :::> Key=~p ; R=~p",[KEY,R]),
 	{reply,R,State};
-handle_call({store_offline_msg,KEY,TimeStamp,Msg},_From, State) -> 
-	{ok,C0} = thrift_client_util:new(State#state.host,State#state.port, ecache_thrift, []),	
-	{C1, R} =  thrift_client:call(C0, cmd, [["ZADD",KEY,TimeStamp,Msg]]),
-	thrift_client:close(C1),
-	{reply,R,State}.
+handle_call({store_offline_msg,KEY,TimeStamp,ID},_From, State) -> 
+	?DEBUG("##### store_offline_msg :::> Key=~p ; Time=~p ; ID=~p",[KEY,TimeStamp,ID]),
+	R = ecache_cmd(["ZADD",KEY,TimeStamp,ID],State),
+	?DEBUG("##### store_offline_msg :::> R=~p",[R]),
+	{reply,R,State};
+handle_call({ecache_cmd,Cmd},_From, State) -> 
+	?DEBUG("##### ecache_cmd_on_offline_mod :::> Cmd=~p",[Cmd]),
+	{reply,ecache_cmd(Cmd,State),State}.
+
+ecache_cmd(Cmd,#state{ecache_node=Node,ecache_mod=Mod,ecache_fun=Fun}=State) ->
+	R = rpc:call(Node,Mod,Fun,[{Cmd}]),
+	%% ?DEBUG("==== ecache_cmd ===> Cmd=~p ; R=~p",[Cmd,R]),
+	R.
+
 handle_info(Info, State) -> {noreply, State}.
 terminate(Reason, State) -> ok.
 code_change(OldVsn, State, Extra) -> {ok, State}.
@@ -140,3 +131,20 @@ code_change(OldVsn, State, Extra) -> {ok, State}.
 timestamp() ->  
 	{M, S, _} = os:timestamp(),  
 	M * 1000000 + S.
+getTime(Time) when is_binary(Time) ->
+	{ok,erlang:binary_to_integer(Time)};
+getTime(Time) when is_list(Time) ->
+	{ok,erlang:list_to_integer(Time)};
+getTime([]) ->
+	{ok,timestamp()}.
+conn_ecache_node() ->
+	try
+		[Domain|_] = ?MYHOSTS, 
+		N = ejabberd_config:get_local_option({ecache_node,Domain}),
+		{ok,net_adm:ping(N),N}
+	catch
+		E:I ->
+			Err = erlang:get_stacktrace(),
+			log4erl:error("error ::::> E=~p ; I=~p~n Error=~p",[E,I,Err]),
+			{error,E,I}
+	end.
