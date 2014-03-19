@@ -34,26 +34,32 @@ send_offline_msg(JID) ->
 	%% JID={jid,"cc","test.com","Smack","cc","test.com","Smack"} 
 	{jid,User,Domain,_,_,_,_} = JID,
 	KEY = User++"@"++Domain++"/offline_msg",
-	?INFO_MSG("@@@@@@@@@@@@@@@@ send_offline_msg :::> KEY=~p >>>>>>>>>>>>>>>>>>>>>>>",[KEY]),
+	?INFO_MSG("@@@@ send_offline_msg :::> KEY=~p >>>>>>>>>>>>>>>>>>>>>>>",[KEY]),
 	R = gen_server:call(?MODULE,{range_offline_msg,KEY}),
 	%% TODO 这里，如果发送失败了，是需要重新发送的，但是先让他跑起来
-	?INFO_MSG("@@@@@@@@@@@@@@@@ send_offline_msg :::> KEY=~p ; R.size=~p~n",[KEY,length(R)]),
+	?INFO_MSG("@@@@ send_offline_msg :::> KEY=~p ; R.size=~p~n",[KEY,length(R)]),
 	lists:foreach(fun(ID)->
 		try	
-			[Bin] = gen_server:call(?MODULE,{ecache_cmd,["GET",ID]}),
-			{FF,TT,PP} = erlang:binary_to_term(Bin),
-			Rtn = case ejabberd_router:route(FF, TT, PP) of
-			    ok -> ok; 
-			    Err -> "Error: "++Err
-			end,
-			?INFO_MSG("@@@@@@@ send_offline_message ::> KEY=~p; ID=~p ",[KEY,ID])
+			case gen_server:call(?MODULE,{ecache_cmd,["GET",ID]}) of
+				Obj when erlang:is_list(Obj) ->
+					[Bin] = Obj,	
+					{FF,TT,PP} = erlang:binary_to_term(Bin),
+					Rtn = case ejabberd_router:route(FF, TT, PP) of
+					    ok -> ok; 
+					    Err -> "Error: "++Err
+					end,
+					?INFO_MSG("@ SEND :::::> KEY=~p; ID=~p ",[KEY,ID]);
+				Other ->	
+					ZREM_R = gen_server:call(?MODULE,{ecache_cmd,["ZREM",KEY,ID]}),
+					?INFO_MSG("@ SEND [DEL]::::> KEY=~p; ID=~p; ERR=~p; ZREM_R=~p",[KEY,ID,Other,ZREM_R])	
+			end
 		catch
 			E:I ->
 				?INFO_MSG("~p ; ~p",[E,I])	
 		end,
 		ok
 	end,R),	
-	?INFO_MSG("@@@@@@ send_offline_message ::>KEY=~p  <<<<<<<<<<<<<<<<<",[KEY]),
+	?INFO_MSG("@@@@ send_offline_message ::>KEY=~p  <<<<<<<<<<<<<<<<<",[KEY]),
 	ok.
 
 
@@ -65,15 +71,15 @@ offline_message_hook_handler(#jid{user=FromUser}=From, #jid{user=User,server=Dom
 	Type = xml:get_tag_attr_s("type", Packet),
 	ID = xml:get_tag_attr_s("id", Packet),
 	if
-		(FromUser=/="messageack") and (User=/="messageack") and (Type =/= "error") and (Type =/= "groupchat") and (Type =/= "headline") ->
+		(FromUser=/="messageack"),(User=/="messageack"),(Type =/= "error"),(Type =/= "groupchat"),(Type =/= "headline") ->
 			Time = xml:get_tag_attr_s("msgTime", Packet),
 			%% ?INFO_MSG("ERROR++++++++++++++++ Time=~p;~n~nPacket=~p",[Time,Packet]),
 			{ok,TimeStamp} = getTime(Time),
-			%% 7天以后过期
-			Exp = ?EXPIRE+TimeStamp,
+			%% TODO 7天以后过期
+			%% Exp = ?EXPIRE+TimeStamp,
 			KEY = User++"@"++Domain++"/offline_msg",
 			?INFO_MSG("::::store_offline_msg::::>type=~p;timestamp=~p;KEY=~p",[Type,TimeStamp,KEY]),
-			gen_server:call(?MODULE,{store_offline_msg,KEY,integer_to_list(TimeStamp),ID});
+			gen_server:call(?MODULE,{store_offline_msg,KEY,ID});
 		true ->
 			ok
 	end.
@@ -108,9 +114,10 @@ handle_call({range_offline_msg,KEY},_From, State) ->
 	R = ecache_cmd(["ZRANGE",KEY,"0","-1"],State),
 	?DEBUG("##### range_offline_msg :::> Key=~p ; R=~p",[KEY,R]),
 	{reply,R,State};
-handle_call({store_offline_msg,KEY,TimeStamp,ID},_From, State) -> 
-	?DEBUG("##### store_offline_msg :::> Key=~p ; Time=~p ; ID=~p",[KEY,TimeStamp,ID]),
-	R = ecache_cmd(["ZADD",KEY,TimeStamp,ID],State),
+handle_call({store_offline_msg,KEY,ID},_From, State) -> 
+	SCORE = integer_to_list(index_score()),
+	?DEBUG("##### store_offline_msg :::> Key=~p ; Time=~p ; ID=~p",[KEY,SCORE,ID]),
+	R = ecache_cmd(["ZADD",KEY,SCORE,ID],State),
 	?DEBUG("##### store_offline_msg :::> R=~p",[R]),
 	{reply,R,State};
 handle_call({ecache_cmd,Cmd},_From, State) -> 
@@ -129,7 +136,7 @@ code_change(OldVsn, State, Extra) -> {ok, State}.
 %% Internal functions
 %% ====================================================================
 timestamp() ->  
-	{M, S, _} = os:timestamp(),  
+	{M, S, _} = os:timestamp(),
 	M * 1000000 + S.
 getTime(Time) when is_binary(Time) ->
 	{ok,erlang:binary_to_integer(Time)};
@@ -137,6 +144,7 @@ getTime(Time) when is_list(Time) ->
 	{ok,erlang:list_to_integer(Time)};
 getTime([]) ->
 	{ok,timestamp()}.
+index_score()-> {M,S,T} = now(),  M*1000000000000+S*1000000+T.
 conn_ecache_node() ->
 	try
 		[Domain|_] = ?MYHOSTS, 
