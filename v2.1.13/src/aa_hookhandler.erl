@@ -6,6 +6,7 @@
 -include_lib("xmerl/include/xmerl.hrl").
 
 -define(HTTP_HEAD,"application/x-www-form-urlencoded").
+-define(TIME_OUT,1000*5).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
@@ -23,6 +24,8 @@
 	 sm_remove_connection_hook_handler/3,
 	 user_available_hook_handler/1
 	]).
+
+-record(dmsg,{mid,pid}).
 
 sm_register_connection_hook_handler(SID, JID, Info) -> ok.
 sm_remove_connection_hook_handler(SID, JID, Info) -> ok.
@@ -76,9 +79,7 @@ offline_message_hook_handler(#jid{user=FromUser}=From, #jid{server=Domain}=To, P
 					   MID = case dict:is_key("id", D) of
 							 true ->
 								 ID = dict:fetch("id", D),
-								 %% 140318 : 其实在用户发包时，已经同步过了，这里没必要重复同步
-								 %% SyncRes = gen_server:call(?MODULE,{sync_packet,ID,From,To,Packet}),
-								 %% ?DEBUG("===========> SYNC_RES offline => ~p ; ID=~p",[SyncRes,ID]),
+								 ack_task({offline,ID}),
 								 ID;
 							 _ -> ""
 					   end,
@@ -274,16 +275,16 @@ user_send_packet_handler(#jid{user=FU,server=FD}=From, To, Packet) ->
 				   ?DEBUG("~p", [skip_02] ),
 				   skip
 			end,
-			%% 我要判断消息是不是一个聊天消息，如果是 ack 消息，则改变消息状态为 ack
-			if
-				ACK_FROM,MT=/=[],MT=/="msgStatus",FU=/="messageack" ->
+			if ACK_FROM,MT=/=[],MT=/="msgStatus",FU=/="messageack" ->
 					SyncRes = gen_server:call(?MODULE,{sync_packet,SRC_ID_STR,From,To,Packet}),
-					?DEBUG("===========> SYNC_RES new => ~p ; ID=~p",[SyncRes,SRC_ID_STR]);
+					?DEBUG("===========> SYNC_RES new => ~p ; ID=~p",[SyncRes,SRC_ID_STR]),
+					ack_task({new,SRC_ID_STR,From,To,Packet});
 				ACK_FROM,MT=:="msgStatus" ->
 					KK = FU++"@"++FD++"/offline_msg",
 					gen_server:call(?MODULE,{ecache_cmd,["DEL",SRC_ID_STR]}),
 					gen_server:call(?MODULE,{ecache_cmd,["ZREM",KK,SRC_ID_STR]}),
-					?DEBUG("===========> SYNC_RES ack => ACK_USER=~p ; ACK_ID=~p",[KK,SRC_ID_STR]);
+					?DEBUG("===========> SYNC_RES ack => ACK_USER=~p ; ACK_ID=~p",[KK,SRC_ID_STR]),
+					ack_task({ack,SRC_ID_STR});
 				true ->
 					skip
 			end;
@@ -343,6 +344,7 @@ init([]) ->
 	[Domain|_] = ?MYHOSTS, 
 	%% 启动5281端口，接收内网回调
 	aa_inf_server:start(),
+	mnesia:create_table(dmsg,[{attributes,record_info(fields,dmsg)},{ram_copies,[node()]}]),
 	{ok, #state{ecache_node=Node}}.
 
 handle_call({ecache_cmd,Cmd}, _F, #state{ecache_node=Node,ecache_mod=Mod,ecache_fun=Fun}=State) ->
@@ -378,3 +380,31 @@ conn_ecache_node() ->
 			{error,E,I}
 	end.
 
+ack_task({new,ID,From,To,Packet})->
+	TPid = erlang:spawn(fun()-> ack_task(ID,From,To,Packet) end),
+	mnesia:dirty_write(dmsg,#dmsg{mid=ID,pid=TPid});
+ack_task({ack,ID})->
+	ack_task({do,ack,ID});
+ack_task({offline,ID})->
+	ack_task({do,offline,ID});
+ack_task({do,M,ID})->
+	try
+		[{_,_,ResendPid}] = mnesia:dirty_read(dmsg,ID),
+		ResendPid!M 
+	catch 
+		_:_-> ack_err
+	end.
+ack_task(ID,From,To,Packet)->
+	?INFO_MSG("ACK_TASK_~p ::::> START.",[ID]),
+	receive 
+		offline->
+			mnesia:dirty_delete(dmsg,ID),
+			?INFO_MSG("ACK_TASK_~p ::::> OFFLINE.",[ID]);
+		ack ->
+			mnesia:dirty_delete(dmsg,ID),
+			?INFO_MSG("ACK_TASK_~p ::::> ACK.",[ID])
+	after ?TIME_OUT -> 
+		?INFO_MSG("ACK_TASK_~p ::::> AFTER",[ID]),
+		mnesia:dirty_delete(dmsg,ID),
+		offline_message_hook_handler(From,To,Packet)
+	end.
