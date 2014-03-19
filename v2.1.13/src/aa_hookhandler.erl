@@ -24,15 +24,9 @@
 	 user_available_hook_handler/1
 	]).
 
-sm_register_connection_hook_handler(SID, JID, Info) -> 
-	%% ?DEBUG("@@@@@@@@@@@@@@@@ sm_register_connection_hook_handler :::> {SID,JID,Info}=~p",[{SID,JID,Info}]),
-	ok.
-sm_remove_connection_hook_handler(SID, JID, Info) -> 
-	%% ?DEBUG("@@@@@@@@@@@@@@@@ sm_remove_connection_hook_handler :::> {SID,JID,Info}=~p",[{SID,JID,Info}]),
-	ok.
-user_available_hook_handler(JID) -> 
-	%% ?DEBUG("@@@@@@@@@@@@@@@@ user_available_hook_handler :::> JID=~p",[JID]),
-	ok.
+sm_register_connection_hook_handler(SID, JID, Info) -> ok.
+sm_remove_connection_hook_handler(SID, JID, Info) -> ok.
+user_available_hook_handler(JID) -> ok.
 
 start_link() ->
 	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).

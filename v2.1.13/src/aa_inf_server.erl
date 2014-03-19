@@ -29,10 +29,10 @@ process({Args})->
     				LUser = To#jid.luser,
     				LServer = To#jid.lserver,
     				PrioRes = get_user_present_resources(LUser, LServer),
+				aa_hookhandler:user_send_packet_handler(From,To,Packet),
     				case catch lists:max(PrioRes) of
 					{Priority, _R} when is_integer(Priority), Priority >= 0 ->
 						%% 在线消息
-						aa_hookhandler:user_send_packet_handler(From,To,Packet),
 						"online: "++LUser;
 					_ ->
 						%% 离线消息
