@@ -7,14 +7,19 @@ process_counter()->
 	L = [X||X<-Counter,ordsets:is_subset([ok],tuple_to_list(X))=:=true],
 	process_counter_to_json(L,[]).
 process_counter(From) ->
-	P = rpc:call(From,erlang,whereis,[ejabberd_c2s_sup]),
-	case is_pid(P) of 
-		true ->
-			D = dict:from_list( rpc:call(From,erlang,process_info,[P]) ),
-			L = dict:fetch('links',D),
-			{ok,{From,length(L)}};
-		_ ->
-			{bad_node,From}
+	try
+		P = rpc:call(From,erlang,whereis,[ejabberd_c2s_sup]),
+		case is_pid(P) of 
+			true ->
+				D = dict:from_list( rpc:call(From,erlang,process_info,[P]) ),
+				L = dict:fetch('links',D),
+				{ok,{From,length(L)}};
+			_ ->
+				{no_ejabberd_node,From}
+		end
+	catch
+		_:_->
+			{no_ejabberd_node,From}
 	end.
 process_counter_to_json([E|L],List)->
 	{ok,{Node,Total}} = E,

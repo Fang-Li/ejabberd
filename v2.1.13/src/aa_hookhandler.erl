@@ -286,16 +286,17 @@ user_send_packet_handler(#jid{user=FU,server=FD}=From, To, Packet) ->
 						   ?DEBUG("~p", [skip_02] ),
 						   skip
 					end,
+					SYNCID = SRC_ID_STR++"@"++Domain,
 					if ACK_FROM,MT=/=[],MT=/="msgStatus",FU=/="messageack" ->
-							SyncRes = gen_server:call(?MODULE,{sync_packet,SRC_ID_STR,From,To,Packet}),
-							?DEBUG("===========> SYNC_RES new => ~p ; ID=~p",[SyncRes,SRC_ID_STR]),
-							ack_task({new,SRC_ID_STR,From,To,Packet});
+							SyncRes = gen_server:call(?MODULE,{sync_packet,SYNCID,From,To,Packet}),
+							?DEBUG("==> SYNC_RES new => ~p ; ID=~p",[SyncRes,SRC_ID_STR]),
+							ack_task({new,SYNCID,From,To,Packet});
 						ACK_FROM,MT=:="msgStatus" ->
 							KK = FU++"@"++FD++"/offline_msg",
-							gen_server:call(?MODULE,{ecache_cmd,["DEL",SRC_ID_STR]}),
-							gen_server:call(?MODULE,{ecache_cmd,["ZREM",KK,SRC_ID_STR]}),
-							?DEBUG("===========> SYNC_RES ack => ACK_USER=~p ; ACK_ID=~p",[KK,SRC_ID_STR]),
-							ack_task({ack,SRC_ID_STR});
+							gen_server:call(?MODULE,{ecache_cmd,["DEL",SYNCID]}),
+							gen_server:call(?MODULE,{ecache_cmd,["ZREM",KK,SYNCID]}),
+							?DEBUG("==> SYNC_RES ack => ACK_USER=~p ; ACK_ID=~p",[KK,SYNCID]),
+							ack_task({ack,SYNCID});
 						true ->
 							skip
 					end
@@ -346,8 +347,6 @@ init([]) ->
 			  ejabberd_hooks:add(user_available_hook, Host, ?MODULE, user_available_hook_handler, 45),
 			  ?INFO_MSG("#### user_available_hook_handler Host=~p~n",[Host])
 
-			  %ejabberd_hooks:add(roster_out_subscription,Host,?MODULE, roster_out_subscription_handler ,90),
-			  %?INFO_MSG("#### roster_out_subscription Host=~p~n",[Host])
 	  end, ?MYHOSTS),
 	Conn = conn_ecache_node(),
 	?INFO_MSG("INIT_END <<<<<<<<<<<<<<<<<<<<<<<<< Conn=~p",[Conn]),

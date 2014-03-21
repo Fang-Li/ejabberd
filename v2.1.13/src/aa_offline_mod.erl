@@ -71,7 +71,8 @@ offline_message_hook_handler(#jid{user=FromUser}=From, #jid{user=User,server=Dom
 	Type = xml:get_tag_attr_s("type", Packet),
 	ID = xml:get_tag_attr_s("id", Packet),
 	IS_GROUP = aa_group_chat:is_group_chat(To),
-	if IS_GROUP==false,FromUser=/="messageack",User=/="messageack",Type =/= "error",Type =/= "groupchat",Type =/= "headline" ->
+	if IS_GROUP==false,FromUser=/="messageack",User=/="messageack",Type=/="error",Type=/="groupchat",Type=/="headline" ->
+			SYNCID = ID++"@"++Domain,
 			Time = xml:get_tag_attr_s("msgTime", Packet),
 			%% ?INFO_MSG("ERROR++++++++++++++++ Time=~p;~n~nPacket=~p",[Time,Packet]),
 			{ok,TimeStamp} = getTime(Time),
@@ -79,7 +80,7 @@ offline_message_hook_handler(#jid{user=FromUser}=From, #jid{user=User,server=Dom
 			%% Exp = ?EXPIRE+TimeStamp,
 			KEY = User++"@"++Domain++"/offline_msg",
 			?INFO_MSG("::::store_offline_msg::::>type=~p;timestamp=~p;KEY=~p",[Type,TimeStamp,KEY]),
-			gen_server:call(?MODULE,{store_offline_msg,KEY,ID});
+			gen_server:call(?MODULE,{store_offline_msg,KEY,SYNCID});
 		true ->
 			ok
 	end.
