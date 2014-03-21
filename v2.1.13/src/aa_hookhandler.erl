@@ -86,7 +86,13 @@ offline_message_hook_handler(#jid{user=FromUser}=From, #jid{server=Domain}=To, P
 					   %% 回调webapp
 					   case catch ejabberd_config:get_local_option({ack_from ,Domain}) of
 						   true->
-							   offline_message_hook_handler( From, To, Packet, D, MID );
+							case aa_group_chat:is_group_chat(To) of
+								true ->
+									skip;
+								false ->
+							   		offline_message_hook_handler( From, To, Packet, D, MID )
+							end,
+							ok;
 						   _->
 							   %% 宠物那边走这个逻辑
 							   case V of "normalchat" -> offline_message_hook_handler( From, To, Packet, D, MID ); _-> skip end
@@ -220,73 +226,79 @@ user_send_packet_handler(#jid{user=FU,server=FD}=From, To, Packet) ->
 	?DEBUG("Domain=~p ; E=~p", [Domain,E] ),
 	case E of 
 		"message" ->
-			{_,"message",Attr,_} = Packet,
-			?DEBUG("Attr=~p", [Attr] ),
-			D = dict:from_list(Attr),
-			T = dict:fetch("type", D),
-			MT = dict:fetch("msgtype", D),
-			%% 只响应 type != normal 的消息
-			%% 理论上讲，这个地方一定要有一个ID，不过如果没有，其实对服务器没影响，但客户端就麻烦了
-			SRC_ID_STR = case dict:is_key("id", D) of 
-					     true -> 
-						     dict:fetch("id", D);
-					     _ -> ""
-				     end,
-			?DEBUG("SRC_ID_STR=~p", [SRC_ID_STR] ),
-			?DEBUG("Type=~p", [T] ),
-			ACK_FROM = case catch ejabberd_config:get_local_option({ack_from ,Domain}) of 
-					   true -> true;
-					   _ -> false
-				   end,
-			?DEBUG("ack_from=~p ; Domain=~p ; T=~p ; MT=~p",[ACK_FROM,Domain,T,MT]),
-			%% XXX : 第一个逻辑，ack 由服务器向发送方发出响应，表明服务器已经收到此信息
-			%% 应答消息，要应答到 from 上
-			if ACK_FROM , MT=:="normalchat" ->
-				   case dict:is_key("from", D) of 
-					   true -> 
-						   Attributes = [
-								 {"id",os:cmd("uuidgen")--"\n"},
-								 {"to",dict:fetch("from", D)},
-								 {"from","messageack@"++Domain},
-								 {"type","normal"},
-								 {"msgtype",""},
-								 {"action","ack"}
-								],
-						   Child = [{xmlelement, "body", [], [
-										      {xmlcdata, list_to_binary("{'src_id':'"++SRC_ID_STR++"','received':'true'}")}
-										     ]}],
-						   %%Answer = {xmlelement,"message",Attributes, []},
-						   Answer = {xmlelement, "message", Attributes , Child},
-						   FF = jlib:string_to_jid(xml:get_tag_attr_s("from", Answer)),
-						   TT = jlib:string_to_jid(xml:get_tag_attr_s("to", Answer)),
-						   ?DEBUG("Answer ::::> FF=~p ; TT=~p ; P=~p ", [FF,TT,Answer] ),
-						   case catch ejabberd_router:route(FF, TT, Answer) of
-							   ok -> 
-								   ?DEBUG("Answer ::::> ~p ", [ok] );
-							   _ERROR ->
-								   ?DEBUG("Answer ::::> error=~p ", [_ERROR] )
-						   end,
-						   answer;
-					   _ ->
-						   ?DEBUG("~p", [skip_01] ),
-						   skip
-				   end;
-			   true ->
-				   ?DEBUG("~p", [skip_02] ),
-				   skip
-			end,
-			if ACK_FROM,MT=/=[],MT=/="msgStatus",FU=/="messageack" ->
-					SyncRes = gen_server:call(?MODULE,{sync_packet,SRC_ID_STR,From,To,Packet}),
-					?DEBUG("===========> SYNC_RES new => ~p ; ID=~p",[SyncRes,SRC_ID_STR]),
-					ack_task({new,SRC_ID_STR,From,To,Packet});
-				ACK_FROM,MT=:="msgStatus" ->
-					KK = FU++"@"++FD++"/offline_msg",
-					gen_server:call(?MODULE,{ecache_cmd,["DEL",SRC_ID_STR]}),
-					gen_server:call(?MODULE,{ecache_cmd,["ZREM",KK,SRC_ID_STR]}),
-					?DEBUG("===========> SYNC_RES ack => ACK_USER=~p ; ACK_ID=~p",[KK,SRC_ID_STR]),
-					ack_task({ack,SRC_ID_STR});
+			case aa_group_chat:is_group_chat(To) of  
 				true ->
-					skip
+					?DEBUG("###### send_group_chat_msg ###### From=~p ; Domain=~p",[From,Domain]),
+					aa_group_chat:route_group_msg(From,To,Packet);
+				false ->
+					{_,"message",Attr,_} = Packet,
+					?DEBUG("Attr=~p", [Attr] ),
+					D = dict:from_list(Attr),
+					T = dict:fetch("type", D),
+					MT = dict:fetch("msgtype", D),
+					%% 只响应 type != normal 的消息
+					%% 理论上讲，这个地方一定要有一个ID，不过如果没有，其实对服务器没影响，但客户端就麻烦了
+					SRC_ID_STR = case dict:is_key("id", D) of 
+							     true -> 
+								     dict:fetch("id", D);
+							     _ -> ""
+						     end,
+					?DEBUG("SRC_ID_STR=~p", [SRC_ID_STR] ),
+					?DEBUG("Type=~p", [T] ),
+					ACK_FROM = case catch ejabberd_config:get_local_option({ack_from ,Domain}) of 
+							   true -> true;
+							   _ -> false
+						   end,
+					?DEBUG("ack_from=~p ; Domain=~p ; T=~p ; MT=~p",[ACK_FROM,Domain,T,MT]),
+					%% XXX : 第一个逻辑，ack 由服务器向发送方发出响应，表明服务器已经收到此信息
+					%% 应答消息，要应答到 from 上
+					if ACK_FROM , MT=:="normalchat" ->
+						   case dict:is_key("from", D) of 
+							   true -> 
+								   Attributes = [
+										 {"id",os:cmd("uuidgen")--"\n"},
+										 {"to",dict:fetch("from", D)},
+										 {"from","messageack@"++Domain},
+										 {"type","normal"},
+										 {"msgtype",""},
+										 {"action","ack"}
+								   ],
+								   Child = [{xmlelement, "body", [], [
+										{xmlcdata, list_to_binary("{'src_id':'"++SRC_ID_STR++"','received':'true'}")}
+								   ]}],
+								   %%Answer = {xmlelement,"message",Attributes, []},
+								   Answer = {xmlelement, "message", Attributes , Child},
+								   FF = jlib:string_to_jid(xml:get_tag_attr_s("from", Answer)),
+								   TT = jlib:string_to_jid(xml:get_tag_attr_s("to", Answer)),
+								   ?DEBUG("Answer ::::> FF=~p ; TT=~p ; P=~p ", [FF,TT,Answer] ),
+								   case catch ejabberd_router:route(FF, TT, Answer) of
+									   ok -> 
+										   ?DEBUG("Answer ::::> ~p ", [ok] );
+									   _ERROR ->
+										   ?DEBUG("Answer ::::> error=~p ", [_ERROR] )
+								   end,
+								   answer;
+							   _ ->
+								   ?DEBUG("~p", [skip_01] ),
+								   skip
+						   end;
+					   true ->
+						   ?DEBUG("~p", [skip_02] ),
+						   skip
+					end,
+					if ACK_FROM,MT=/=[],MT=/="msgStatus",FU=/="messageack" ->
+							SyncRes = gen_server:call(?MODULE,{sync_packet,SRC_ID_STR,From,To,Packet}),
+							?DEBUG("===========> SYNC_RES new => ~p ; ID=~p",[SyncRes,SRC_ID_STR]),
+							ack_task({new,SRC_ID_STR,From,To,Packet});
+						ACK_FROM,MT=:="msgStatus" ->
+							KK = FU++"@"++FD++"/offline_msg",
+							gen_server:call(?MODULE,{ecache_cmd,["DEL",SRC_ID_STR]}),
+							gen_server:call(?MODULE,{ecache_cmd,["ZREM",KK,SRC_ID_STR]}),
+							?DEBUG("===========> SYNC_RES ack => ACK_USER=~p ; ACK_ID=~p",[KK,SRC_ID_STR]),
+							ack_task({ack,SRC_ID_STR});
+						true ->
+							skip
+					end
 			end;
 		_ ->
 			?DEBUG("~p", [skip_00] ),
@@ -360,7 +372,6 @@ handle_call({sync_packet,K,From,To,Packet}, _F, #state{ecache_node=Node,ecache_m
 	%% add {K,V} to zset
 	aa_offline_mod:offline_message_hook_handler(From,To,Packet),
 	{reply, R, State}.
-
 handle_cast(Msg, State) -> {noreply, State}.
 handle_info(Info, State) -> {noreply, State}.
 terminate(Reason, State) -> ok.

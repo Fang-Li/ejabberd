@@ -70,8 +70,8 @@ sm_remove_connection_hook_handler(SID, JID, Info) -> ok.
 offline_message_hook_handler(#jid{user=FromUser}=From, #jid{user=User,server=Domain}=To, Packet) ->
 	Type = xml:get_tag_attr_s("type", Packet),
 	ID = xml:get_tag_attr_s("id", Packet),
-	if
-		(FromUser=/="messageack"),(User=/="messageack"),(Type =/= "error"),(Type =/= "groupchat"),(Type =/= "headline") ->
+	IS_GROUP = aa_group_chat:is_group_chat(To),
+	if IS_GROUP==false,FromUser=/="messageack",User=/="messageack",Type =/= "error",Type =/= "groupchat",Type =/= "headline" ->
 			Time = xml:get_tag_attr_s("msgTime", Packet),
 			%% ?INFO_MSG("ERROR++++++++++++++++ Time=~p;~n~nPacket=~p",[Time,Packet]),
 			{ok,TimeStamp} = getTime(Time),
