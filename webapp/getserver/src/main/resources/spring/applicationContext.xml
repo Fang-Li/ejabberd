@@ -42,8 +42,6 @@
     
 	<bean class="org.springframework.beans.factory.annotation.AutowiredAnnotationBeanPostProcessor" />
 
-	<context:component-scan base-package="com.momoplan.pet">
-		<context:exclude-filter type="regex" expression="com.momoplan.pet.commons.spring.*"/>
-	</context:component-scan>
+	<context:component-scan base-package="com.momoplan.pet.framework.manager"></context:component-scan>
 
 </beans>
