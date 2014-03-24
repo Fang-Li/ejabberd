@@ -18,8 +18,7 @@ import org.apache.zookeeper.Watcher.Event.EventType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.momoplan.pet.commons.spring.Bootstrap;
-import com.momoplan.pet.commons.zoo.ActiveKeyValueStore;
+import com.sun.jdi.Bootstrap;
 
 /**
  * 静态 KEY-VALUE 属性集中管理客户端
@@ -196,12 +195,13 @@ public class ConfigWatcher extends Config implements Watcher {
 		store = new ActiveKeyValueStore();
 		store.connect(getHost());
 		uname = (InetAddress.getLocalHost()).getHostName();
-		if(Bootstrap.http_port>0){
-			pidPort.add(Bootstrap.http_port+"");
-		}else{
-			String pid = ManagementFactory.getRuntimeMXBean().getName();
-			fillPidPort(pid);
-		}
+//		if(Bootstrap.http_port>0){
+//			pidPort.add(Bootstrap.http_port+"");
+//		}else{
+//			String pid = ManagementFactory.getRuntimeMXBean().getName();
+//			fillPidPort(pid);
+//		}
+		pidPort.add("8080");
 		logger.debug(basePath+" : "+"basePath : "+basePath);
 		eachBasePath();
 	}
