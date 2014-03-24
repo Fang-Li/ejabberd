@@ -59,6 +59,7 @@ public class GetServerController {
 		//TODO check license
 		String license_info = Config.publicConfig.get(license_key);
 		logger.debug("license_info="+license_info);
+		logger.debug("nodeServiceUrl="+nodeServiceUrl);
 		URL u = new URL(nodeServiceUrl);
 		URLConnection conn = u.openConnection();
 		InputStream is = conn.getInputStream();
