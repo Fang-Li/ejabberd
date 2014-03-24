@@ -83,8 +83,9 @@
 		<profile>
 			<id>test</id>
 			<properties>
+    			<zoo.server>123.178.27.74:2181</zoo.server>
     			<node.def.host>192.168.0.60:5222</node.def.host>
-    			<node.service.url>http://192.168.0.60:5380/?body={"method":"process_counter"}</node.service.url>
+    			<node.service.url>http://192.168.0.60:5380/?body={%22method%22:%22process_counter%22}</node.service.url>
 			</properties>
 			
 		</profile>
@@ -92,7 +93,7 @@
 			<id>release</id>
 			<properties>
     			<node.def.host>221.122.114.212:5222</node.def.host>
-    			<node.service.url>http://192.168.99.50:5380/?body={"method":"process_counter"}</node.service.url>
+    			<node.service.url>http://192.168.99.50:5380/?body={%22method":"process_counter%22}</node.service.url>
 			</properties>
 		</profile>
 	</profiles>
