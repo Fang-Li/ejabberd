@@ -37,7 +37,7 @@
 	</logger>
 
     <logger name="com.momoplan.pet">
-        <level value="INFO"/>
+        <level value="DEBUG"/>
         <appender-ref ref="FILE" />
          <appender-ref ref="CONSOLE" />
     </logger>
@@ -46,7 +46,7 @@
 	<!-- Setup the Root logger -->
 	<!-- ======================= -->
 	<root>
-		<level value="INFO" />
+		<level value="DEBUG" />
 	</root>
 	
 </log4j:configuration>
