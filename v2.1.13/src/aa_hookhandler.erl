@@ -363,9 +363,16 @@ handle_call({ecache_cmd,Cmd}, _F, #state{ecache_node=Node,ecache_mod=Mod,ecache_
 	R = rpc:call(Node,Mod,Fun,[{Cmd}]),
 	{reply, R, State};
 handle_call({sync_packet,K,From,To,Packet}, _F, #state{ecache_node=Node,ecache_mod=Mod,ecache_fun=Fun}=State) ->
-	V = term_to_binary({From,To,Packet}),
-	?DEBUG("==== sync_packet ===> insert K=~p~nV=~p",[K,V]),
 	%% insert {K,V} 
+	%% reset msgTime
+	{M,S,SS} = now(),
+	MsgTime = lists:sublist(erlang:integer_to_list(M*1000000000000+S*1000000+SS),1,13),
+	{X,E,Attr,Body} = Packet,
+	RAttr0 = lists:map(fun({K,V})-> case K of "msgTime" -> skip; _-> {K,V} end end,Attr),
+	RAttr1 = lists:append([X||X<-RAttr0,X=/=skip],[{"msgTime",MsgTime}]),
+	RPacket = {X,E,RAttr1,Body},
+	V = term_to_binary({From,To,RPacket}),
+	?DEBUG("==== sync_packet ===> insert K=~p~nV=~p",[K,V]),
 	Cmd = ["SET",K,V],
 	R = rpc:call(Node,Mod,Fun,[{Cmd}]),
 	%% add {K,V} to zset
