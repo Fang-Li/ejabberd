@@ -376,7 +376,7 @@ handle_call({sync_packet,K,From,To,Packet}, _F, #state{ecache_node=Node,ecache_m
 	Cmd = ["SET",K,V],
 	R = rpc:call(Node,Mod,Fun,[{Cmd}]),
 	%% add {K,V} to zset
-	aa_offline_mod:offline_message_hook_handler(From,To,Packet),
+	aa_offline_mod:offline_message_hook_handler(From,To,RPacket),
 	{reply, R, State}.
 handle_cast(Msg, State) -> {noreply, State}.
 handle_info(Info, State) -> {noreply, State}.
