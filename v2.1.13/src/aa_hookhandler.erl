@@ -235,14 +235,10 @@ user_send_packet_handler(#jid{user=FU,server=FD}=From, To, Packet) ->
 					?DEBUG("Attr=~p", [Attr] ),
 					D = dict:from_list(Attr),
 					T = dict:fetch("type", D),
-					MT = dict:fetch("msgtype", D),
+					MT = case dict:is_key("msgtype",D) of true-> dict:fetch("msgtype",D); _-> "" end,
 					%% 只响应 type != normal 的消息
 					%% 理论上讲，这个地方一定要有一个ID，不过如果没有，其实对服务器没影响，但客户端就麻烦了
-					SRC_ID_STR = case dict:is_key("id", D) of 
-							     true -> 
-								     dict:fetch("id", D);
-							     _ -> ""
-						     end,
+					SRC_ID_STR = case dict:is_key("id", D) of true -> dict:fetch("id", D); _ -> "" end,
 					?DEBUG("SRC_ID_STR=~p", [SRC_ID_STR] ),
 					?DEBUG("Type=~p", [T] ),
 					ACK_FROM = case catch ejabberd_config:get_local_option({ack_from ,Domain}) of 
