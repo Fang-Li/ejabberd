@@ -98,13 +98,33 @@ route(From, To, Packet) ->
     end.
 
 open_session(SID, User, Server, Resource, Info) ->
-    set_session(SID, User, Server, Resource, undefined, Info),
-    mnesia:dirty_update_counter(session_counter,
-				jlib:nameprep(Server), 1),
-    check_for_sessions_to_replace(User, Server, Resource),
-    JID = jlib:make_jid(User, Server, Resource),
-    ejabberd_hooks:run(sm_register_connection_hook, JID#jid.lserver,
-		       [SID, JID, Info]).
+	case mnesia:dirty_index_read(session, {User, Server, Resource}, #session.usr) of
+		[] ->
+			?DEBUG("[open_session_ok] User=~p;Server=~p;Resource=~p ::::>",[User,Server,Resource]);
+		Ss ->
+			?DEBUG("[open_session_ss] User=~p;Server=~p;Resource=~p ::::>Ss=~p",[User,Server,Resource,Ss]),
+			lists:foreach(fun(Session) -> 
+				SID2 = Session#session.sid,
+				USR = Session#session.usr,
+				?DEBUG("[open_session_close_first_ok] User=~p;Server=~p ::::>",[User,Server]),
+				{UUU,SSS,RRR} = USR,
+				%% TODO 这里不光要关闭 session，还要关闭 c2s 链接
+				case ejabberd_sm:get_session_pid(UUU,SSS,RRR) of
+					Pid when is_pid(Pid) ->
+						?DEBUG("[open_session_stop_ok] User=~p;Server=~p ::::>",[User,Server]),
+						ejabberd_c2s:stop(Pid);
+					_ ->
+						?DEBUG("[open_session_stop_skip_ok] User=~p;Server=~p ::::>",[User,Server]),
+						ok
+			    	end,			
+				close_session(SID2, UUU,SSS,RRR)
+			end, Ss)
+	end,
+	set_session(SID, User, Server, Resource, undefined, Info),
+	mnesia:dirty_update_counter(session_counter,jlib:nameprep(Server), 1),
+	check_for_sessions_to_replace(User, Server, Resource),
+	JID = jlib:make_jid(User, Server, Resource),
+	ejabberd_hooks:run(sm_register_connection_hook, JID#jid.lserver, [SID, JID, Info]).
 
 close_session(SID, User, Server, Resource) ->
     Info = case mnesia:dirty_read({session, SID}) of
