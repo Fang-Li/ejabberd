@@ -90,12 +90,12 @@ offline_message_hook_handler(#jid{user=FromUser}=From, #jid{server=Domain}=To, P
 								true ->
 									skip;
 								false ->
-							   		offline_message_hook_handler( From, To, Packet, D, MID )
+							   		offline_message_hook_handler( From, To, Packet, D, MID,V )
 							end,
 							ok;
 						   _->
 							   %% 宠物那边走这个逻辑
-							   case V of "normalchat" -> offline_message_hook_handler( From, To, Packet, D, MID ); _-> skip end
+							   case V of "normalchat" -> offline_message_hook_handler( From, To, Packet, D, MID,V ); _-> skip end
 					   end;
 				   true->
 					   ok
@@ -106,18 +106,18 @@ offline_message_hook_handler(#jid{user=FromUser}=From, #jid{server=Domain}=To, P
 	end.
 
 
-offline_message_hook_handler(From, To, Packet,D,ID ) ->
+offline_message_hook_handler(From, To, Packet,D,ID,MsgType ) ->
 	try
 		V = dict:fetch("fileType", D),
-		send_offline_message(From ,To ,Packet,V,ID )
+		send_offline_message(From ,To ,Packet,V,ID,MsgType )
 	catch
-		_:_ -> send_offline_message(From ,To ,Packet,"",ID )
+		_:_ -> send_offline_message(From ,To ,Packet,"",ID,MsgType )
 	end,
 	ok.
 
 %% 将 Packet 中的 Text 消息 Post 到指定的 Http 服务
 %% IOS 消息推送功能
-send_offline_message(From ,To ,Packet,Type,MID )->
+send_offline_message(From ,To ,Packet,Type,MID,MsgType )->
 	{jid,FromUser,Domain,_,_,_,_} = From ,	
 	{jid,ToUser,_,_,_,_,_} = To ,	
 	%% 取自配置文件 ejabberd.cfg
@@ -126,20 +126,21 @@ send_offline_message(From ,To ,Packet,Type,MID )->
 	HTTPService = ejabberd_config:get_local_option({http_server_service_client,Domain}),
 	HTTPTarget = string:concat(HTTPServer,HTTPService),
 	Msg = get_text_message_from_packet( Packet ),
-	{Service,Method,FN,TN,MSG,T,MSG_ID} = {
+	{Service,Method,FN,TN,MSG,T,MSG_ID,MType} = {
 				      list_to_binary("service.uri.pet_user"),
 				      list_to_binary("pushMsgApn"),
 				      list_to_binary(FromUser),
 				      list_to_binary(ToUser),
 				      list_to_binary(Msg),
 				      list_to_binary(Type),
-				      list_to_binary(MID)
+				      list_to_binary(MID),
+				      list_to_binary(MsgType)
 				     },
 	ParamObj={obj,[ 
 		       {"service",Service},
 		       {"method",Method},
 		       {"channel",list_to_binary("9")},
-		       {"params",{obj,[{"fromname",FN},{"toname",TN},{"msg",MSG},{"type",T},{"id",MSG_ID}]} } 
+		       {"params",{obj,[{"msgtype",MType},{"fromname",FN},{"toname",TN},{"msg",MSG},{"type",T},{"id",MSG_ID}]} } 
 		      ]},
 	Form = "body="++rfc4627:encode(ParamObj),
 	?DEBUG("MMMMMMMMMMMMMMMMM===Form=~p~n",[Form]),
