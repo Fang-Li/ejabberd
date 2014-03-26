@@ -39,6 +39,22 @@
     <bean id="nodeServiceUrl" class="java.lang.String" >
     	<constructor-arg index="0" value="${node.service.url}" />
     </bean>
+
+    
+    <bean id="nodeCookie" class="java.lang.String" >
+    	<constructor-arg index="0" value="${node.cookie}" />
+    </bean>
+    <bean id="nodePing" class="java.lang.String" >
+    	<constructor-arg index="0" value="${node.ping}" />
+    </bean>
+    <bean id="nodeName" class="java.lang.String" >
+    	<constructor-arg index="0" value="${node.name}" />
+    </bean>
+    <bean id="nodeBox" class="java.lang.String" >
+    	<constructor-arg index="0" value="${node.box}" />
+    </bean>
+    
+    
     
 	<bean class="org.springframework.beans.factory.annotation.AutowiredAnnotationBeanPostProcessor" />
 
