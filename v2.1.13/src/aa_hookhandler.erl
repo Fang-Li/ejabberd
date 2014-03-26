@@ -364,16 +364,17 @@ handle_call({sync_packet,K,From,To,Packet}, _F, #state{ecache_node=Node,ecache_m
 	%% reset msgTime
 	{M,S,SS} = now(),
 	MsgTime = lists:sublist(erlang:integer_to_list(M*1000000000000+S*1000000+SS),1,13),
-	{X,E,Attr,Body} = Packet,
+	{Tag,E,Attr,Body} = Packet,
 	RAttr0 = lists:map(fun({K,V})-> case K of "msgTime" -> skip; _-> {K,V} end end,Attr),
 	RAttr1 = lists:append([X||X<-RAttr0,X=/=skip],[{"msgTime",MsgTime}]),
-	RPacket = {X,E,RAttr1,Body},
+	RPacket = {Tag,E,RAttr1,Body},
 	V = term_to_binary({From,To,RPacket}),
 	?DEBUG("==== sync_packet ===> insert K=~p~nV=~p",[K,V]),
 	Cmd = ["PSETEX",K,integer_to_list(1000*60*60*24*7),V],
 	R = rpc:call(Node,Mod,Fun,[{Cmd}]),
 	%% add {K,V} to zset
 	aa_offline_mod:offline_message_hook_handler(From,To,RPacket),
+	log(RPacket),
 	{reply, R, State}.
 handle_cast(Msg, State) -> {noreply, State}.
 handle_info(Info, State) -> {noreply, State}.
@@ -391,6 +392,33 @@ conn_ecache_node() ->
 		E:I ->
 			Err = erlang:get_stacktrace(),
 			log4erl:error("error ::::> E=~p ; I=~p~n Error=~p",[E,I,Err]),
+			{error,E,I}
+	end.
+
+log(Packet) ->
+	%% {id,from,to,msgtype,body}
+	[Domain|_] = ?MYHOSTS, 
+	try
+		N = ejabberd_config:get_local_option({log_node,Domain}),
+		{xmlelement,"message",Attr,_} = Packet,
+		D = dict:from_list(Attr),
+		ID 	= case dict:is_key("id",D) of true-> dict:fetch("id",D); false-> "" end,
+		From 	= case dict:is_key("from",D) of true-> dict:fetch("from",D); false-> "" end,
+		To 	= case dict:is_key("to",D) of true-> dict:fetch("to",D); false-> "" end,
+		MsgType = case dict:is_key("msgtype",D) of true-> dict:fetch("msgtype",D); false-> "" end,
+		Msg 	= erlang:list_to_binary(get_text_message_from_packet(Packet)),
+		Message = {ID,From,To,MsgType,Msg},
+		case net_adm:ping(N) of 
+			pang -> 
+				?INFO_MSG("write_log ::::> ~p",[Message]),
+				Message;
+			pong ->
+				{logbox,N}!Message
+		end 
+	catch
+		E:I ->
+			Err = erlang:get_stacktrace(),
+			log4erl:error("write_log_error ::::> E=~p ; I=~p~n Error=~p",[E,I,Err]),
 			{error,E,I}
 	end.
 
