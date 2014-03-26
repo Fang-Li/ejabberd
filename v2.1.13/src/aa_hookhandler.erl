@@ -370,7 +370,7 @@ handle_call({sync_packet,K,From,To,Packet}, _F, #state{ecache_node=Node,ecache_m
 	RPacket = {X,E,RAttr1,Body},
 	V = term_to_binary({From,To,RPacket}),
 	?DEBUG("==== sync_packet ===> insert K=~p~nV=~p",[K,V]),
-	Cmd = ["SET",K,V],
+	Cmd = ["PSETEX",K,integer_to_list(1000*60*60*24*7),V],
 	R = rpc:call(Node,Mod,Fun,[{Cmd}]),
 	%% add {K,V} to zset
 	aa_offline_mod:offline_message_hook_handler(From,To,RPacket),
