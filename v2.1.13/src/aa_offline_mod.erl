@@ -75,11 +75,11 @@ offline_message_hook_handler(#jid{user=FromUser}=From, #jid{user=User,server=Dom
 			SYNCID = ID++"@"++Domain,
 			Time = xml:get_tag_attr_s("msgTime", Packet),
 			%% ?INFO_MSG("ERROR++++++++++++++++ Time=~p;~n~nPacket=~p",[Time,Packet]),
-			{ok,TimeStamp} = getTime(Time),
+			%% {ok,TimeStamp} = getTime(Time),
 			%% TODO 7天以后过期
 			%% Exp = ?EXPIRE+TimeStamp,
 			KEY = User++"@"++Domain++"/offline_msg",
-			?INFO_MSG("::::store_offline_msg::::>type=~p;timestamp=~p;KEY=~p",[Type,TimeStamp,KEY]),
+			?INFO_MSG("::::store_offline_msg::::>type=~p;KEY=~p",[Type,KEY]),
 			gen_server:call(?MODULE,{store_offline_msg,KEY,SYNCID});
 		true ->
 			ok

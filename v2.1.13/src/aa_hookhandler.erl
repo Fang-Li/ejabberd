@@ -90,12 +90,12 @@ offline_message_hook_handler(#jid{user=FromUser}=From, #jid{server=Domain}=To, P
 								true ->
 									skip;
 								false ->
-							   		offline_message_hook_handler( From, To, Packet, D, MID )
+							   		offline_message_hook_handler( From, To, Packet, D, MID,V )
 							end,
 							ok;
 						   _->
 							   %% 宠物那边走这个逻辑
-							   case V of "normalchat" -> offline_message_hook_handler( From, To, Packet, D, MID ); _-> skip end
+							   case V of "normalchat" -> offline_message_hook_handler( From, To, Packet, D, MID,V ); _-> skip end
 					   end;
 				   true->
 					   ok
@@ -106,18 +106,18 @@ offline_message_hook_handler(#jid{user=FromUser}=From, #jid{server=Domain}=To, P
 	end.
 
 
-offline_message_hook_handler(From, To, Packet,D,ID ) ->
+offline_message_hook_handler(From, To, Packet,D,ID,MsgType ) ->
 	try
 		V = dict:fetch("fileType", D),
-		send_offline_message(From ,To ,Packet,V,ID )
+		send_offline_message(From ,To ,Packet,V,ID,MsgType )
 	catch
-		_:_ -> send_offline_message(From ,To ,Packet,"",ID )
+		_:_ -> send_offline_message(From ,To ,Packet,"",ID,MsgType )
 	end,
 	ok.
 
 %% 将 Packet 中的 Text 消息 Post 到指定的 Http 服务
 %% IOS 消息推送功能
-send_offline_message(From ,To ,Packet,Type,MID )->
+send_offline_message(From ,To ,Packet,Type,MID,MsgType )->
 	{jid,FromUser,Domain,_,_,_,_} = From ,	
 	{jid,ToUser,_,_,_,_,_} = To ,	
 	%% 取自配置文件 ejabberd.cfg
@@ -126,20 +126,21 @@ send_offline_message(From ,To ,Packet,Type,MID )->
 	HTTPService = ejabberd_config:get_local_option({http_server_service_client,Domain}),
 	HTTPTarget = string:concat(HTTPServer,HTTPService),
 	Msg = get_text_message_from_packet( Packet ),
-	{Service,Method,FN,TN,MSG,T,MSG_ID} = {
+	{Service,Method,FN,TN,MSG,T,MSG_ID,MType} = {
 				      list_to_binary("service.uri.pet_user"),
 				      list_to_binary("pushMsgApn"),
 				      list_to_binary(FromUser),
 				      list_to_binary(ToUser),
 				      list_to_binary(Msg),
 				      list_to_binary(Type),
-				      list_to_binary(MID)
+				      list_to_binary(MID),
+				      list_to_binary(MsgType)
 				     },
 	ParamObj={obj,[ 
 		       {"service",Service},
 		       {"method",Method},
 		       {"channel",list_to_binary("9")},
-		       {"params",{obj,[{"fromname",FN},{"toname",TN},{"msg",MSG},{"type",T},{"id",MSG_ID}]} } 
+		       {"params",{obj,[{"msgtype",MType},{"fromname",FN},{"toname",TN},{"msg",MSG},{"type",T},{"id",MSG_ID}]} } 
 		      ]},
 	Form = "body="++rfc4627:encode(ParamObj),
 	?DEBUG("MMMMMMMMMMMMMMMMM===Form=~p~n",[Form]),
@@ -235,14 +236,10 @@ user_send_packet_handler(#jid{user=FU,server=FD}=From, To, Packet) ->
 					?DEBUG("Attr=~p", [Attr] ),
 					D = dict:from_list(Attr),
 					T = dict:fetch("type", D),
-					MT = dict:fetch("msgtype", D),
+					MT = case dict:is_key("msgtype",D) of true-> dict:fetch("msgtype",D); _-> "" end,
 					%% 只响应 type != normal 的消息
 					%% 理论上讲，这个地方一定要有一个ID，不过如果没有，其实对服务器没影响，但客户端就麻烦了
-					SRC_ID_STR = case dict:is_key("id", D) of 
-							     true -> 
-								     dict:fetch("id", D);
-							     _ -> ""
-						     end,
+					SRC_ID_STR = case dict:is_key("id", D) of true -> dict:fetch("id", D); _ -> "" end,
 					?DEBUG("SRC_ID_STR=~p", [SRC_ID_STR] ),
 					?DEBUG("Type=~p", [T] ),
 					ACK_FROM = case catch ejabberd_config:get_local_option({ack_from ,Domain}) of 
@@ -363,13 +360,21 @@ handle_call({ecache_cmd,Cmd}, _F, #state{ecache_node=Node,ecache_mod=Mod,ecache_
 	R = rpc:call(Node,Mod,Fun,[{Cmd}]),
 	{reply, R, State};
 handle_call({sync_packet,K,From,To,Packet}, _F, #state{ecache_node=Node,ecache_mod=Mod,ecache_fun=Fun}=State) ->
-	V = term_to_binary({From,To,Packet}),
-	?DEBUG("==== sync_packet ===> insert K=~p~nV=~p",[K,V]),
 	%% insert {K,V} 
-	Cmd = ["SET",K,V],
+	%% reset msgTime
+	{M,S,SS} = now(),
+	MsgTime = lists:sublist(erlang:integer_to_list(M*1000000000000+S*1000000+SS),1,13),
+	{Tag,E,Attr,Body} = Packet,
+	RAttr0 = lists:map(fun({K,V})-> case K of "msgTime" -> skip; _-> {K,V} end end,Attr),
+	RAttr1 = lists:append([X||X<-RAttr0,X=/=skip],[{"msgTime",MsgTime}]),
+	RPacket = {Tag,E,RAttr1,Body},
+	V = term_to_binary({From,To,RPacket}),
+	?DEBUG("==== sync_packet ===> insert K=~p~nV=~p",[K,V]),
+	Cmd = ["PSETEX",K,integer_to_list(1000*60*60*24*7),V],
 	R = rpc:call(Node,Mod,Fun,[{Cmd}]),
 	%% add {K,V} to zset
-	aa_offline_mod:offline_message_hook_handler(From,To,Packet),
+	aa_offline_mod:offline_message_hook_handler(From,To,RPacket),
+	log(RPacket),
 	{reply, R, State}.
 handle_cast(Msg, State) -> {noreply, State}.
 handle_info(Info, State) -> {noreply, State}.
@@ -387,6 +392,33 @@ conn_ecache_node() ->
 		E:I ->
 			Err = erlang:get_stacktrace(),
 			log4erl:error("error ::::> E=~p ; I=~p~n Error=~p",[E,I,Err]),
+			{error,E,I}
+	end.
+
+log(Packet) ->
+	%% {id,from,to,msgtype,body}
+	[Domain|_] = ?MYHOSTS, 
+	try
+		N = ejabberd_config:get_local_option({log_node,Domain}),
+		{xmlelement,"message",Attr,_} = Packet,
+		D = dict:from_list(Attr),
+		ID 	= case dict:is_key("id",D) of true-> dict:fetch("id",D); false-> "" end,
+		From 	= case dict:is_key("from",D) of true-> dict:fetch("from",D); false-> "" end,
+		To 	= case dict:is_key("to",D) of true-> dict:fetch("to",D); false-> "" end,
+		MsgType = case dict:is_key("msgtype",D) of true-> dict:fetch("msgtype",D); false-> "" end,
+		Msg 	= erlang:list_to_binary(get_text_message_from_packet(Packet)),
+		Message = {ID,From,To,MsgType,Msg},
+		case net_adm:ping(N) of 
+			pang -> 
+				?INFO_MSG("write_log ::::> ~p",[Message]),
+				Message;
+			pong ->
+				{logbox,N}!Message
+		end 
+	catch
+		E:I ->
+			Err = erlang:get_stacktrace(),
+			log4erl:error("write_log_error ::::> E=~p ; I=~p~n Error=~p",[E,I,Err]),
 			{error,E,I}
 	end.
 
