@@ -391,7 +391,7 @@ conn_ecache_node() ->
 	catch
 		E:I ->
 			Err = erlang:get_stacktrace(),
-			log4erl:error("error ::::> E=~p ; I=~p~n Error=~p",[E,I,Err]),
+			?ERROR_MSG("error ::::> E=~p ; I=~p~n Error=~p",[E,I,Err]),
 			{error,E,I}
 	end.
 
@@ -418,7 +418,7 @@ log(Packet) ->
 	catch
 		E:I ->
 			Err = erlang:get_stacktrace(),
-			log4erl:error("write_log_error ::::> E=~p ; I=~p~n Error=~p",[E,I,Err]),
+			?ERROR_MSG("write_log_error ::::> E=~p ; I=~p~n Error=~p",[E,I,Err]),
 			{error,E,I}
 	end.
 
