@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 
 import com.ericsson.otp.erlang.OtpErlangAtom;
 import com.ericsson.otp.erlang.OtpErlangBinary;
-import com.ericsson.otp.erlang.OtpErlangInt;
+import com.ericsson.otp.erlang.OtpErlangLong;
 import com.ericsson.otp.erlang.OtpErlangObject;
 import com.ericsson.otp.erlang.OtpErlangString;
 import com.ericsson.otp.erlang.OtpErlangTuple;
@@ -61,9 +61,7 @@ public class LogNode {
 					log.append(body);
 					msg_logger.info(log.toString());
 					//TODO write in cassandra
-				}catch(Exception e){
-					msg_logger.error("error", e);
-				}
+				}catch(Exception e){}
 			}
 
 			private void counter_log(OtpErlangObject obj){
@@ -73,14 +71,16 @@ public class LogNode {
 					OtpErlangAtom counter = (OtpErlangAtom)tuple.elementAt(0);
 					if("counter".equalsIgnoreCase(counter.atomValue())){
 						OtpErlangString domain = (OtpErlangString)tuple.elementAt(1);
-						OtpErlangInt total = (OtpErlangInt)tuple.elementAt(2);
+						OtpErlangLong total = (OtpErlangLong)tuple.elementAt(2);
 						StringBuffer log = new StringBuffer("\02");
 						log.append(domain.stringValue()).append("\01");
 						log.append(total.intValue());
 						counter_logger.info(log.toString());
 						//TODO write in cassandra
 					}
-				}catch(Exception e){}
+				}catch(Exception e){
+					e.printStackTrace();
+				}
 			}
 
 			@Override

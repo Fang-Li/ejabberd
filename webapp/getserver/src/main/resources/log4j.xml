@@ -70,7 +70,7 @@
 
     <logger name="com.momoplan.pet.framework.manager.node.counter">
         <level value="DEBUG"/>
-        <appender-ref ref="MSG_FILE" />
+        <appender-ref ref="COUNTER_FILE" />
         <appender-ref ref="CONSOLE" />
     </logger>
     
