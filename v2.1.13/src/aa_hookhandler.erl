@@ -29,7 +29,11 @@
 
 sm_register_connection_hook_handler(SID, JID, Info) -> ok.
 sm_remove_connection_hook_handler(SID, JID, Info) -> ok.
-user_available_hook_handler(JID) -> ok.
+user_available_hook_handler(#jid{server=Domain}=JID) -> 
+	%% 统计并发量
+	Total = aa_session:total_count_user(Domain),		
+	log({counter,Domain,Total}),
+	ok.
 
 start_link() ->
 	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -391,12 +395,28 @@ conn_ecache_node() ->
 	catch
 		E:I ->
 			Err = erlang:get_stacktrace(),
-			log4erl:error("error ::::> E=~p ; I=~p~n Error=~p",[E,I,Err]),
+			?ERROR_MSG("error ::::> E=~p ; I=~p~n Error=~p",[E,I,Err]),
 			{error,E,I}
 	end.
 
+%% {id,from,to,msgtype,body}
+log({counter,Domain,Total}) ->
+	[Domain|_] = ?MYHOSTS, 
+	try
+		N = ejabberd_config:get_local_option({log_node,Domain}),
+		case net_adm:ping(N) of 
+			pang -> 
+				?INFO_MSG("write_log ::::> ~p",[{counter,Domain,Total}]);
+			pong ->
+				{logbox,N}!{counter,Domain,Total}
+		end 
+	catch
+		E:I ->
+			Err = erlang:get_stacktrace(),
+			?ERROR_MSG("write_log_error ::::> E=~p ; I=~p~n Error=~p",[E,I,Err]),
+			{error,E,I}
+	end;
 log(Packet) ->
-	%% {id,from,to,msgtype,body}
 	[Domain|_] = ?MYHOSTS, 
 	try
 		N = ejabberd_config:get_local_option({log_node,Domain}),
@@ -418,7 +438,7 @@ log(Packet) ->
 	catch
 		E:I ->
 			Err = erlang:get_stacktrace(),
-			log4erl:error("write_log_error ::::> E=~p ; I=~p~n Error=~p",[E,I,Err]),
+			?ERROR_MSG("write_log_error ::::> E=~p ; I=~p~n Error=~p",[E,I,Err]),
 			{error,E,I}
 	end.
 
