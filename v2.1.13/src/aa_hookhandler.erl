@@ -395,8 +395,8 @@ conn_ecache_node() ->
 			{error,E,I}
 	end.
 
+%% {id,from,to,msgtype,body}
 log(Packet) ->
-	%% {id,from,to,msgtype,body}
 	[Domain|_] = ?MYHOSTS, 
 	try
 		N = ejabberd_config:get_local_option({log_node,Domain}),

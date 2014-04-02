@@ -40,7 +40,9 @@ handle_http(Req) ->
 
 http_response({S,Req}) ->
 	Res = {obj,[{success,S#success.success},{entity,S#success.entity}]},
+	?DEBUG("##### http_response ::::> S=~p",[Res]),
 	J = rfc4627:encode(Res),
+	?DEBUG("##### http_response ::::> J=~p",[J]),
 	Req:ok([{"Content-Type", "text/json"}], "~s", [J]).
 
 %%%===================================================================
@@ -87,6 +89,7 @@ handle_call({handle_http,Req}, _From, State) ->
 				Req:parse_post()
 		end,
 		[{"body",Body}] = Args,
+		?DEBUG("###### handle_http :::> Body=~p",[Body]),
 		{ok,Obj,_Re} = rfc4627:decode(Body),
 		%%{ok,T} = rfc4627:get_field(Obj, "token"),
 		{ok,M} = rfc4627:get_field(Obj, "method"),
@@ -95,11 +98,14 @@ handle_call({handle_http,Req}, _From, State) ->
 			"process_counter" ->
 				Counter = aa_process_counter:process_counter(),
 				http_response({#success{success=true,entity=Counter},Req});
+			"get_user_list" ->
+				UserList = aa_session:get_user_list(Body),	
+				http_response({#success{success=true,entity=UserList},Req});
 			_ ->
 				http_response({#success{success=false,entity=list_to_binary("method undifine")},Req})
 		end
 	catch
-		_:Reason -> ?INFO_MSG("==== aa_http ====~p",[Reason])
+		_:Reason -> ?INFO_MSG("==== aa_http ==== ::> ~p",[Reason]) 
 	end,
 	{reply,Reply, State};
 
