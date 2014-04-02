@@ -31,8 +31,15 @@ sm_register_connection_hook_handler(SID, JID, Info) -> ok.
 sm_remove_connection_hook_handler(SID, JID, Info) -> ok.
 user_available_hook_handler(#jid{server=Domain}=JID) -> 
 	%% 统计并发量
-	Total = aa_session:total_count_user(Domain),		
-	log({counter,Domain,Total}),
+	?DEBUG("##### counter_log ::::> ~p",[JID]),
+	try
+		[{Total}] = aa_session:total_count_user(Domain),		
+		log({counter,Domain,Total}) 
+	catch
+		_:_ ->
+			Err = erlang:get_stacktrace(),
+			?DEBUG("##### counter_log ERROR ::::> ~p",[Err]) 
+	end,
 	ok.
 
 start_link() ->
@@ -401,7 +408,6 @@ conn_ecache_node() ->
 
 %% {id,from,to,msgtype,body}
 log({counter,Domain,Total}) ->
-	[Domain|_] = ?MYHOSTS, 
 	try
 		N = ejabberd_config:get_local_option({log_node,Domain}),
 		case net_adm:ping(N) of 
