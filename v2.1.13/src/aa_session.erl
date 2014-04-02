@@ -1,7 +1,7 @@
 -module(aa_session).
 -include_lib("stdlib/include/qlc.hrl").
 
--export([ find/1, get_user_list/1 ]).
+-export([find/1,total_count_user/1,get_user_list/1]).
 -record(session, {sid, usr, us, priority, info}).
 -record(session_counter, {vhost, count}).
 
