@@ -200,6 +200,13 @@ get_cache_option(Host) ->
 
 %% @spec (User, Server, Password) -> true | false
 check_password_extauth(User, Server, Password) ->
+	case ejabberd_config:get_local_option({auth,Server}) of 
+		false ->
+			true;
+		_->
+			check_password_extauth(do,User,Server,Password)
+	end.
+check_password_extauth(do,User, Server, Password) ->
 	?INFO_MSG("##########################~p AUTH_Server=~p~nUser=~p~n",[check_password_extauth,Server,User]),
 	 HTTPServer =  ejabberd_config:get_local_option({http_server,Server}),
 	 HTTPService = ejabberd_config:get_local_option({http_server_service_client,Server}),
