@@ -71,7 +71,11 @@ code_change(OldVsn, State, Extra) ->
 %% ====================================================================
 get_user_list_by_group_id(Domain,GroupId)->
 	?DEBUG("###### get_user_list_by_group_id :::> GroupId=~p",[GroupId]),
- 	HTTPTarget =  ejabberd_config:get_local_option({http_server,Domain}),
+	HTTPServer =  ejabberd_config:get_local_option({http_server,Domain}),
+	%% 取自配置文件 ejabberd.cfg
+	HTTPService = ejabberd_config:get_local_option({http_server_service_client,Domain}),
+	HTTPTarget = string:concat(HTTPServer,HTTPService),
+
 	{Service,Method,GID,SN} = {
 			list_to_binary("service.groupchat"),
 			list_to_binary("getUserList"),
