@@ -68,8 +68,9 @@ get_text_message_from_packet( Packet )->
 
 %% 获取消息包中的文本消息，用于离线消息推送服务
 get_text_message_form_packet_result( Body )->
-	{xmlelement,"body",_,[{xmlcdata,MessageBody}]} = Body,
-	ResultMessage = binary_to_list(MessageBody),
+	{xmlelement,"body",_,List} = Body,
+	Res = lists:map(fun({_,V})-> binary_to_list(V) end,List),                                       
+	ResultMessage = lists:merge(Res), 
 	ResultMessage.	
 
 %% 离线消息处理器
