@@ -85,8 +85,14 @@ start()->
 	start(5281).
 
 start(Port)->
-	LoopPid = erlang:spawn(fun()-> loop() end),
-	erlang:register(aa_inf_server_run,LoopPid),
+	try
+		LoopPid = erlang:spawn(fun()-> loop() end),
+		RegRtn = erlang:register(aa_inf_server_run,LoopPid),
+		?INFO_MSG("aa_inf_server start looppid=~p ; reg=~p",[LoopPid,RegRtn])
+	catch	
+		_:_->
+			?INFO_MSG("aa_inf_server start reg_err :::> ~p",[erlang:get_stacktrace()])
+	end,
 	Handler = ?MODULE,
 	?INFO_MSG("aa_inf_server start on ~p port, Handler=~p",[Port,Handler]),
 	thrift_socket_server:start([{handler, Handler},
