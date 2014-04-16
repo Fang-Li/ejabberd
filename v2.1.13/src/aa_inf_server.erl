@@ -18,6 +18,7 @@ build_packet(<<"term">>,Content)->
 
 process({Args})->
 	try
+		Packet = build_packet(Args#aaRequest.type,Args#aaRequest.content),
 		Nodes = [node()|nodes()],
 		EjabberdNodes = list_to_tuple([N||N<-Nodes,string:str(atom_to_list(N),"ejabberd")=:=1]),
 		Len = tuple_size(EjabberdNodes),
@@ -25,7 +26,7 @@ process({Args})->
 		Index = (Seed rem Len)+1,
 		TaskNode = element(Index,EjabberdNodes),
 		?INFO_MSG("aa_info_server_process :::> TaskNode=~p ; Index=~p ; Len=~p ; Seed=~p",[TaskNode,Index,Len,Seed]),
-		{aa_inf_server_run,TaskNode}!{push,Args},
+		{aa_inf_server_run,TaskNode}!{push,Packet},
 		"OK" 
 	catch
 		_:_->
@@ -35,10 +36,8 @@ process({Args})->
 
 
 
-run(Args) ->
+run(Packet) ->
 	try
-		?DEBUG("aa_info_server ::: Args ====> ~p",[Args]),
-		Packet = build_packet(Args#aaRequest.type,Args#aaRequest.content),
 		?DEBUG("aa_info_server ::: Packet ====> ~p",[Packet]),
 		From = jlib:string_to_jid(xml:get_tag_attr_s("from", Packet)),
 		To = jlib:string_to_jid(xml:get_tag_attr_s("to", Packet)),
@@ -73,8 +72,8 @@ run(Args) ->
 
 loop()->
 	receive
-		{push,Args} ->
-			run(Args),
+		{push,Packet} ->
+			run(Packet),
 			loop();
 		Other ->
 			?INFO_MSG("aa_inf_server_run_Other=~p",[Other]),
