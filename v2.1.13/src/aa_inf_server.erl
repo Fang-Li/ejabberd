@@ -18,8 +18,8 @@ build_packet(<<"term">>,Content)->
 
 process({Args})->
 	try
-		Nodes = list_to_tuple([node()|nodes()]),
-		EjabberdNodes = [N||N<-Nodes,string:str(atom_to_list(N),"ejabberd")=:=1],
+		Nodes = [node()|nodes()],
+		EjabberdNodes = list_to_tuple([N||N<-Nodes,string:str(atom_to_list(N),"ejabberd")=:=1]),
 		Len = tuple_size(EjabberdNodes),
 		{_,Seed,_} = now(),	
 		Index = (Seed rem Len)+1,
