@@ -18,6 +18,23 @@ build_packet(<<"term">>,Content)->
 
 process({Args})->
 	try
+		Nodes = list_to_tuple([node()|nodes()]),
+		Len = tuple_size(Nodes),
+		{_,Seed,_} = now(),	
+		Index = (Seed rem Len)+1,
+		TaskNode = element(Index,Nodes),
+		{aa_inf_server_run,TaskNode}!{push,Args},
+		"OK" 
+	catch
+		_:_->
+			Err = erlang:get_stacktrace(),
+			"ERROR: "++Err
+	end.
+
+
+
+run(Args) ->
+	try
 		?DEBUG("aa_info_server ::: Args ====> ~p",[Args]),
 		Packet = build_packet(Args#aaRequest.type,Args#aaRequest.content),
 		?DEBUG("aa_info_server ::: Packet ====> ~p",[Packet]),
@@ -26,19 +43,21 @@ process({Args})->
 		{xmlelement, "message", _Attrs, _Kids} = Packet,
 		case ejabberd_router:route(From, To, Packet) of
 		    ok -> 
-    				LUser = To#jid.luser,
-    				LServer = To#jid.lserver,
-    				PrioRes = get_user_present_resources(LUser, LServer),
 				aa_hookhandler:user_send_packet_handler(From,To,Packet),
-    				case catch lists:max(PrioRes) of
-					{Priority, _R} when is_integer(Priority), Priority >= 0 ->
-						%% 在线消息
-						"online: "++LUser;
-					_ ->
-						%% 离线消息
-						%% aa_hookhandler:offline_message_hook_handler(From,To,Packet),
-						"offline: "++LUser
-				end;
+				"OK";
+    			%%	LUser = To#jid.luser,
+    			%%	LServer = To#jid.lserver,
+    			%%	PrioRes = get_user_present_resources(LUser, LServer),
+			%%	aa_hookhandler:user_send_packet_handler(From,To,Packet),
+    			%%	case catch lists:max(PrioRes) of
+			%%		{Priority, _R} when is_integer(Priority), Priority >= 0 ->
+			%%			%% 在线消息
+			%%			"online: "++LUser;
+			%%		_ ->
+			%%			%% 离线消息
+			%%			%% aa_hookhandler:offline_message_hook_handler(From,To,Packet),
+			%%			"offline: "++LUser
+			%%	end;
 		    Err -> "Error: "++Err
 		end
 	catch
@@ -50,18 +69,29 @@ process({Args})->
 			"Error: " ++ atom_to_list(Reason)
 	end.
 
-
+loop()->
+	receive
+		{push,Args} ->
+			run(Args),
+			loop();
+		Other ->
+			?INFO_MSG("aa_inf_server_run_Other=~p",[Other]),
+			loop()
+	end.
 
 start()->
 	start(5281).
 
 start(Port)->
+	LoopPid = erlang:spawn(fun()-> loop() end),
+	erlang:register(aa_inf_server_run,LoopPid),
 	Handler = ?MODULE,
 	?INFO_MSG("aa_inf_server start on ~p port, Handler=~p",[Port,Handler]),
 	thrift_socket_server:start([{handler, Handler},
 				    {service, aa_inf_thrift},
 				    {port, Port},
 				    {name, aa_inf_server}]).
+
 
 stop(Server)->
 	thrift_socket_server:stop(Server).
