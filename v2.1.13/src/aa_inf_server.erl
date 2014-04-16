@@ -19,10 +19,12 @@ build_packet(<<"term">>,Content)->
 process({Args})->
 	try
 		Nodes = list_to_tuple([node()|nodes()]),
-		Len = tuple_size(Nodes),
+		EjabberdNodes = [N||N<-Nodes,string:str(atom_to_list(N),"ejabberd")=:=1],
+		Len = tuple_size(EjabberdNodes),
 		{_,Seed,_} = now(),	
 		Index = (Seed rem Len)+1,
-		TaskNode = element(Index,Nodes),
+		TaskNode = element(Index,EjabberdNodes),
+		?INFO_MSG("aa_info_server_process :::> TaskNode=~p ; Index=~p ; Len=~p ; Seed=~p",[TaskNode,Index,Len,Seed]),
 		{aa_inf_server_run,TaskNode}!{push,Args},
 		"OK" 
 	catch
