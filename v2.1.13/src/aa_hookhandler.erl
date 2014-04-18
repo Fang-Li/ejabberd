@@ -70,7 +70,7 @@ get_text_message_from_packet( Packet )->
 get_text_message_form_packet_result( Body )->
 	{xmlelement,"body",_,List} = Body,
 	Res = lists:map(fun({_,V})-> binary_to_list(V) end,List),                                       
-	ResultMessage = lists:merge(Res), 
+	ResultMessage = binary_to_list(list_to_binary(Res)), 
 	ResultMessage.	
 
 %% 离线消息处理器
@@ -269,7 +269,7 @@ user_send_packet_handler(#jid{user=FU,server=FD}=From, To, Packet) ->
 										 {"to",dict:fetch("from", D)},
 										 {"from","messageack@"++Domain},
 										 {"type","normal"},
-										 {"msgtype",""},
+										 {"msgtype","serverAck"},
 										 {"action","ack"}
 								   ],
 								   Child = [{xmlelement, "body", [], [
