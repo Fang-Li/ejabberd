@@ -269,7 +269,7 @@ user_send_packet_handler(#jid{user=FU,server=FD}=From, To, Packet) ->
 										 {"to",dict:fetch("from", D)},
 										 {"from","messageack@"++Domain},
 										 {"type","normal"},
-										 {"msgtype","serverAck"},
+										 {"msgtype",""},
 										 {"action","ack"}
 								   ],
 								   Child = [{xmlelement, "body", [], [
