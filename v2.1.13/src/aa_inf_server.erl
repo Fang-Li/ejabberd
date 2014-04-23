@@ -16,7 +16,7 @@ build_packet(<<"term">>,Content)->
 	{_,_,_,Packet}=binary_to_term(Content),
 	Packet.
 
-process({Args})->
+process({#aaRequest{sn=SN}=Args})->
 	try
 		Packet = build_packet(Args#aaRequest.type,Args#aaRequest.content),
 		Nodes = [node()|nodes()],
@@ -25,12 +25,13 @@ process({Args})->
 		{_,Seed,_} = now(),	
 		Index = (Seed rem Len)+1,
 		TaskNode = element(Index,EjabberdNodes),
-		?INFO_MSG("aa_info_server_process :::> TaskNode=~p ; Index=~p ; Len=~p ; Seed=~p",[TaskNode,Index,Len,Seed]),
+		?INFO_MSG("aa_info_server_process :::> SN=~p ; TaskNode=~p ; Index=~p ; Len=~p ; Seed=~p",[SN,TaskNode,Index,Len,Seed]),
 		{aa_inf_server_run,TaskNode}!{push,Packet},
 		"OK" 
 	catch
 		_:_->
 			Err = erlang:get_stacktrace(),
+			?DEBUG("aa_info_server_process exception :::> SN=~p ; Err=~p",[SN,Err]),
 			"ERROR: "++Err
 	end.
 
@@ -43,31 +44,13 @@ run(Packet) ->
 		To = jlib:string_to_jid(xml:get_tag_attr_s("to", Packet)),
 		{xmlelement, "message", _Attrs, _Kids} = Packet,
 		case ejabberd_router:route(From, To, Packet) of
-		    ok -> 
-				aa_hookhandler:user_send_packet_handler(From,To,Packet),
-				"OK";
-    			%%	LUser = To#jid.luser,
-    			%%	LServer = To#jid.lserver,
-    			%%	PrioRes = get_user_present_resources(LUser, LServer),
-			%%	aa_hookhandler:user_send_packet_handler(From,To,Packet),
-    			%%	case catch lists:max(PrioRes) of
-			%%		{Priority, _R} when is_integer(Priority), Priority >= 0 ->
-			%%			%% 在线消息
-			%%			"online: "++LUser;
-			%%		_ ->
-			%%			%% 离线消息
-			%%			%% aa_hookhandler:offline_message_hook_handler(From,To,Packet),
-			%%			"offline: "++LUser
-			%%	end;
-		    Err -> "Error: "++Err
+			ok -> aa_hookhandler:user_send_packet_handler(From,To,Packet);
+			Err -> "Error: "++Err
 		end
 	catch
-		error:{badmatch, _} -> 
-			?INFO_MSG("exception :::> ~p",[erlang:get_stacktrace()]),
-			"Error: can only accept <message/>";
-		error:{Reason, _} -> 
-			?INFO_MSG("exception :::> ~p",[erlang:get_stacktrace()]),
-			"Error: " ++ atom_to_list(Reason)
+		_:Clazz -> 
+			?INFO_MSG("exception :::> Packet=~p",[Packet]), 
+			?INFO_MSG("exception :::> clazz=~p ; err=~p",[Clazz,erlang:get_stacktrace()]) 
 	end.
 
 loop()->
