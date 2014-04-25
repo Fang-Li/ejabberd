@@ -31,35 +31,41 @@ sm_register_connection_hook_handler(SID, JID, Info) -> ok.
 user_available_hook_handler(JID) -> send_offline_msg(JID).
 
 send_offline_msg(JID) ->
-	%% JID={jid,"cc","test.com","Smack","cc","test.com","Smack"} 
-	{jid,User,Domain,_,_,_,_} = JID,
-	KEY = User++"@"++Domain++"/offline_msg",
-	?INFO_MSG("@@@@ send_offline_msg :::> KEY=~p >>>>>>>>>>>>>>>>>>>>>>>",[KEY]),
-	R = gen_server:call(?MODULE,{range_offline_msg,KEY}),
-	%% TODO 这里，如果发送失败了，是需要重新发送的，但是先让他跑起来
-	?INFO_MSG("@@@@ send_offline_msg :::> KEY=~p ; R.size=~p~n",[KEY,length(R)]),
-	lists:foreach(fun(ID)->
-		try	
-			case gen_server:call(?MODULE,{ecache_cmd,["GET",ID]}) of
-				Obj when erlang:is_list(Obj) ->
-					[Bin] = Obj,	
-					{FF,TT,PP} = erlang:binary_to_term(Bin),
-					Rtn = case ejabberd_router:route(FF, TT, PP) of
-					    ok -> ok; 
-					    Err -> "Error: "++Err
-					end,
-					?INFO_MSG("@ SEND :::::> KEY=~p; ID=~p ",[KEY,ID]);
-				Other ->	
-					ZREM_R = gen_server:call(?MODULE,{ecache_cmd,["ZREM",KEY,ID]}),
-					?INFO_MSG("@ SEND [DEL]::::> KEY=~p; ID=~p; ERR=~p; ZREM_R=~p",[KEY,ID,Other,ZREM_R])	
-			end
-		catch
-			E:I ->
-				?INFO_MSG("~p ; ~p",[E,I])	
-		end,
-		ok
-	end,R),	
-	?INFO_MSG("@@@@ send_offline_message ::>KEY=~p  <<<<<<<<<<<<<<<<<",[KEY]),
+	try 
+		%% JID={jid,"cc","test.com","Smack","cc","test.com","Smack"} 
+		{jid,User,Domain,_,_,_,_} = JID,
+		KEY = User++"@"++Domain++"/offline_msg",
+		?INFO_MSG("@@@@ send_offline_msg :::> KEY=~p >>>>>>>>>>>>>>>>>>>>>>>",[KEY]),
+		R = gen_server:call(?MODULE,{range_offline_msg,KEY}),
+		%% TODO 这里，如果发送失败了，是需要重新发送的，但是先让他跑起来
+		?INFO_MSG("@@@@ send_offline_msg :::> KEY=~p ; R.size=~p~n",[KEY,length(R)]),
+		lists:foreach(fun(ID)->
+			try	
+				case gen_server:call(?MODULE,{ecache_cmd,["GET",ID]}) of
+					Obj when erlang:is_list(Obj) ->
+						[Bin] = Obj,	
+						{FF,TT,PP} = erlang:binary_to_term(Bin),
+						Rtn = case ejabberd_router:route(FF, TT, PP) of
+						    ok -> ok; 
+						    Err -> "Error: "++Err
+						end,
+						?INFO_MSG("@ SEND :::::> KEY=~p; ID=~p ",[KEY,ID]);
+					Other ->	
+						ZREM_R = gen_server:call(?MODULE,{ecache_cmd,["ZREM",KEY,ID]}),
+						?INFO_MSG("@ SEND [DEL]::::> KEY=~p; ID=~p; ERR=~p; ZREM_R=~p",[KEY,ID,Other,ZREM_R])	
+				end
+			catch
+				E:I ->
+					?INFO_MSG("~p ; ~p",[E,I])	
+			end,
+			ok
+		end,R) ,
+		?INFO_MSG("@@@@ send_offline_message ::>KEY=~p  <<<<<<<<<<<<<<<<<",[KEY]) 
+	catch 
+		_:_->
+			Err = erlang:get_stacktrace(),
+			?INFO_MSG("@@ send_offline_message ERROR::> ~p ",[Err])
+	end,
 	ok.
 
 

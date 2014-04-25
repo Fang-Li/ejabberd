@@ -235,80 +235,45 @@ user_send_packet_handler(#jid{user=FU,server=FD}=From, To, Packet) ->
 	?DEBUG("~n~pFrom=~p ; To=~p ; Packet=~p~n ", [liangchuan_debug,From, To, Packet] ),
 	%% From={jid,"cc","test.com","Smack","cc","test.com","Smack"}
 	[_,E|_] = tuple_to_list(Packet),
-	{jid,_,Domain,_,_,_,_} = To,
-	?DEBUG("Domain=~p ; E=~p", [Domain,E] ),
+	Domain = FD,
+	{_,"message",Attr,_} = Packet,
+	?DEBUG("Attr=~p", [Attr] ),
+	D = dict:from_list(Attr),
+	T = dict:fetch("type", D),
+	MT = case dict:is_key("msgtype",D) of true-> dict:fetch("msgtype",D); _-> "" end,
+	%% 理论上讲，这个地方一定要有一个ID，不过如果没有，其实对服务器没影响，但客户端就麻烦了
+	SRC_ID_STR = case dict:is_key("id", D) of true -> dict:fetch("id", D); _ -> "" end,
+	?DEBUG("SRC_ID_STR=~p", [SRC_ID_STR] ),
+	?DEBUG("Type=~p", [T] ),
+	ACK_FROM = case catch ejabberd_config:get_local_option({ack_from ,Domain}) of true -> true; _ -> false end,
+	?DEBUG("ack_from=~p ; Domain=~p ; T=~p ; MT=~p",[ACK_FROM,Domain,T,MT]),
+	SYNCID = SRC_ID_STR++"@"++Domain,
 	case E of 
 		"message" ->
-			case aa_group_chat:is_group_chat(To) of  
-				true ->
+
+			server_ack(From,To,Packet),
+			%% 判断是否群聊消息，不是根据 msgtype 判断的，是根据收消息人判断，这个逻辑很关键
+			IS_GROUP_CHAT = case aa_group_chat:is_group_chat(To) of  
+				true when MT=/="msgStatus" ->
 					?DEBUG("###### send_group_chat_msg ###### From=~p ; Domain=~p",[From,Domain]),
-					aa_group_chat:route_group_msg(From,To,Packet);
-				false ->
-					{_,"message",Attr,_} = Packet,
-					?DEBUG("Attr=~p", [Attr] ),
-					D = dict:from_list(Attr),
-					T = dict:fetch("type", D),
-					MT = case dict:is_key("msgtype",D) of true-> dict:fetch("msgtype",D); _-> "" end,
-					%% 只响应 type != normal 的消息
-					%% 理论上讲，这个地方一定要有一个ID，不过如果没有，其实对服务器没影响，但客户端就麻烦了
-					SRC_ID_STR = case dict:is_key("id", D) of true -> dict:fetch("id", D); _ -> "" end,
-					?DEBUG("SRC_ID_STR=~p", [SRC_ID_STR] ),
-					?DEBUG("Type=~p", [T] ),
-					ACK_FROM = case catch ejabberd_config:get_local_option({ack_from ,Domain}) of 
-							   true -> true;
-							   _ -> false
-						   end,
-					?DEBUG("ack_from=~p ; Domain=~p ; T=~p ; MT=~p",[ACK_FROM,Domain,T,MT]),
-					%% XXX : 第一个逻辑，ack 由服务器向发送方发出响应，表明服务器已经收到此信息
-					%% 应答消息，要应答到 from 上
-					if ACK_FROM , MT=:="normalchat" ->
-						   case dict:is_key("from", D) of 
-							   true -> 
-								   Attributes = [
-										 {"id",os:cmd("uuidgen")--"\n"},
-										 {"to",dict:fetch("from", D)},
-										 {"from","messageack@"++Domain},
-										 {"type","normal"},
-										 {"msgtype",""},
-										 {"action","ack"}
-								   ],
-								   Child = [{xmlelement, "body", [], [
-										{xmlcdata, list_to_binary("{'src_id':'"++SRC_ID_STR++"','received':'true'}")}
-								   ]}],
-								   %%Answer = {xmlelement,"message",Attributes, []},
-								   Answer = {xmlelement, "message", Attributes , Child},
-								   FF = jlib:string_to_jid(xml:get_tag_attr_s("from", Answer)),
-								   TT = jlib:string_to_jid(xml:get_tag_attr_s("to", Answer)),
-								   ?DEBUG("Answer ::::> FF=~p ; TT=~p ; P=~p ", [FF,TT,Answer] ),
-								   case catch ejabberd_router:route(FF, TT, Answer) of
-									   ok -> 
-										   ?DEBUG("Answer ::::> ~p ", [ok] );
-									   _ERROR ->
-										   ?DEBUG("Answer ::::> error=~p ", [_ERROR] )
-								   end,
-								   answer;
-							   _ ->
-								   ?DEBUG("~p", [skip_01] ),
-								   skip
-						   end;
-					   true ->
-						   ?DEBUG("~p", [skip_02] ),
-						   skip
-					end,
-					SYNCID = SRC_ID_STR++"@"++Domain,
-					if ACK_FROM,MT=/=[],MT=/="msgStatus",FU=/="messageack" ->
-							SyncRes = gen_server:call(?MODULE,{sync_packet,SYNCID,From,To,Packet}),
-							?DEBUG("==> SYNC_RES new => ~p ; ID=~p",[SyncRes,SRC_ID_STR]),
-							ack_task({new,SYNCID,From,To,Packet});
-						ACK_FROM,MT=:="msgStatus" ->
-							KK = FU++"@"++FD++"/offline_msg",
-							gen_server:call(?MODULE,{ecache_cmd,["DEL",SYNCID]}),
-							gen_server:call(?MODULE,{ecache_cmd,["ZREM",KK,SYNCID]}),
-							?DEBUG("==> SYNC_RES ack => ACK_USER=~p ; ACK_ID=~p",[KK,SYNCID]),
-							ack_task({ack,SYNCID});
-						true ->
-							skip
-					end
+					aa_group_chat:route_group_msg(From,To,Packet),
+					true;
+				true when MT=:="msgStatus" -> false;
+				false -> false 
+			end,
+			?DEBUG("IS_GROUP_CHAT=~p ; SRCID=~p",[IS_GROUP_CHAT,SYNCID]),
+			if IS_GROUP_CHAT=:=false,ACK_FROM,MT=/=[],MT=/="msgStatus",FU=/="messageack" ->
+					SyncRes = gen_server:call(?MODULE,{sync_packet,SYNCID,From,To,Packet}),
+					?DEBUG("==> SYNC_RES new => ~p ; ID=~p",[SyncRes,SRC_ID_STR]),
+					ack_task({new,SYNCID,From,To,Packet});
+				IS_GROUP_CHAT=:=false,ACK_FROM,MT=:="msgStatus" ->
+					KK = FU++"@"++FD++"/offline_msg",
+					gen_server:call(?MODULE,{ecache_cmd,["DEL",SYNCID]}),
+					gen_server:call(?MODULE,{ecache_cmd,["ZREM",KK,SYNCID]}),
+					?DEBUG("==> SYNC_RES ack => ACK_USER=~p ; ACK_ID=~p",[KK,SYNCID]),
+					ack_task({ack,SYNCID});
+				true ->
+					skip
 			end;
 		_ ->
 			?DEBUG("~p", [skip_00] ),
@@ -476,4 +441,55 @@ ack_task(ID,From,To,Packet)->
 		?INFO_MSG("ACK_TASK_~p ::::> AFTER",[ID]),
 		mnesia:dirty_delete(dmsg,ID),
 		offline_message_hook_handler(From,To,Packet)
+	end.
+
+
+server_ack(#jid{user=FU,server=FD}=From,To,Packet)->
+	Domain = FD,
+	{_,"message",Attr,_} = Packet,
+	D = dict:from_list(Attr),
+	T = dict:fetch("type", D),
+	MT = case dict:is_key("msgtype",D) of true-> dict:fetch("msgtype",D); _-> "" end,
+	SRC_ID_STR = case dict:is_key("id", D) of true -> dict:fetch("id", D); _ -> "" end,
+	ACK_FROM = case ejabberd_config:get_local_option({ack_from ,Domain}) of 
+			   true -> true;
+			   _ -> false
+	end,
+	%% 一个标记，如果有值，则表示不需要 server_ack 回弹此消息
+	G = case dict:is_key("g", D) of true -> dict:fetch("g", D); _ -> true end,
+	?DEBUG("G=~p ; Packet=~p",[G,Packet]),
+	if G and ACK_FROM and ( (MT=:="normalchat") or (MT=:="groupchat") ) ->
+		   %% IS_GROUP_CHAT = aa_group_chat:is_group_chat(To),
+		   case dict:is_key("from", D) of 
+			   true -> 
+				   Attributes = [
+						 {"id",os:cmd("uuidgen")--"\n"},
+						 {"to",dict:fetch("from", D)},
+						 {"from","messageack@"++Domain},
+						 {"type","normal"},
+						 {"msgtype",""},
+						 {"action","ack"}
+				   ],
+				   Child = [{xmlelement, "body", [], [
+						{xmlcdata, list_to_binary("{'src_id':'"++SRC_ID_STR++"','received':'true'}")}
+				   ]}],
+				   %%Answer = {xmlelement,"message",Attributes, []},
+				   Answer = {xmlelement, "message", Attributes , Child},
+				   FF = jlib:string_to_jid(xml:get_tag_attr_s("from", Answer)),
+				   TT = jlib:string_to_jid(xml:get_tag_attr_s("to", Answer)),
+				   ?DEBUG("Answer ::::> FF=~p ; TT=~p ; P=~p ", [FF,TT,Answer] ),
+				   case catch ejabberd_router:route(FF, TT, Answer) of
+					   ok -> 
+						   ?DEBUG("Answer ::::> ~p ", [ok] );
+					   _ERROR ->
+						   ?DEBUG("Answer ::::> error=~p ", [_ERROR] )
+				   end,
+				   answer;
+			   _ ->
+				   ?DEBUG("~p", [skip_01] ),
+				   skip
+		   end;
+	   true ->
+		   ?DEBUG("~p", [skip_02] ),
+		   skip
 	end.

@@ -130,7 +130,8 @@ route_msg(#jid{user=FromUser}=From,#jid{user=User,server=Domain}=To,Packet,Group
 				end 
 			end,Attr),
 			RAttr1 = lists:append(RAttr0,[{"groupid",GroupId}]),
-			RPacket = {X,E,RAttr1,Body},
+			RAttr2 = lists:append(RAttr1,[{"g","0"}]),
+			RPacket = {X,E,RAttr2,Body},
 			?DEBUG("###### route_group_msg 003 input :::> {From,To,RPacket}=~p",[{From,To,RPacket}]),
 			case ejabberd_router:route(From, To, RPacket) of
 				ok ->

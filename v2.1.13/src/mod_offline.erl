@@ -245,7 +245,13 @@ store_packet(From, {jid,_,Domain,_,_,_,_}=To, Packet) ->
 	%% 2014-3-11 : 这里如果不需要走 ack 机制的域，则沿用老的离线模块
 	case catch ejabberd_config:get_local_option({ack_from ,Domain}) of 
 		true -> stop;
-		_ -> store_packet(old,From,To,Packet)
+		_ -> 
+			case aa_group_chat:is_group_chat(To) of 
+				true ->
+					stop;
+				_->
+					store_packet(old,From,To,Packet)
+			end
 	end.
 store_packet(old,From, To, Packet) ->
     Type = xml:get_tag_attr_s("type", Packet),
