@@ -45,7 +45,8 @@ connect()->
 		[Robot] = mnesia:dirty_read(robot,Key),
 		log4erl:debug("Robot:::> ~p",[Robot]),
 		Pid = Robot#robot.pid,
-		gen_server:cast(Pid,connect)
+		gen_server:cast(Pid,connect),
+		mnesia:dirty_delete(robot,Key) 
 	end,Robot_List),
 	log4erl:info("~p ; all connected : ~p~n",[calendar:local_time(), length(Robot_List)]).
 
