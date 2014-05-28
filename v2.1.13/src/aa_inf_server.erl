@@ -31,7 +31,7 @@ process({#aaRequest{sn=SN}=Args})->
 	catch
 		_:_->
 			Err = erlang:get_stacktrace(),
-			?DEBUG("aa_info_server_process exception :::> SN=~p ; Err=~p",[SN,Err]),
+			?ERROR_MSG("aa_info_server_process exception :::> SN=~p ; Err=~p",[SN,Err]),
 			"ERROR: "++Err
 	end.
 
@@ -49,8 +49,8 @@ run(Packet) ->
 		end
 	catch
 		_:Clazz -> 
-			?INFO_MSG("exception :::> Packet=~p",[Packet]), 
-			?INFO_MSG("exception :::> clazz=~p ; err=~p",[Clazz,erlang:get_stacktrace()]) 
+			?ERROR_MSG("exception :::> Packet=~p",[Packet]), 
+			?ERROR_MSG("exception :::> clazz=~p ; err=~p",[Clazz,erlang:get_stacktrace()]) 
 	end.
 
 loop()->
@@ -73,7 +73,7 @@ start(Port)->
 		?INFO_MSG("aa_inf_server start looppid=~p ; reg=~p",[LoopPid,RegRtn])
 	catch	
 		_:_->
-			?INFO_MSG("aa_inf_server start reg_err :::> ~p",[erlang:get_stacktrace()])
+			?ERROR_MSG("aa_inf_server start reg_err :::> ~p",[erlang:get_stacktrace()])
 	end,
 	Handler = ?MODULE,
 	?INFO_MSG("aa_inf_server start on ~p port, Handler=~p",[Port,Handler]),
