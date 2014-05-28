@@ -130,48 +130,54 @@ offline_message_hook_handler(From, To, Packet,D,ID,MsgType ) ->
 %% 将 Packet 中的 Text 消息 Post 到指定的 Http 服务
 %% IOS 消息推送功能
 send_offline_message(From ,To ,Packet,Type,MID,MsgType )->
-	{jid,FromUser,Domain,_,_,_,_} = From ,	
-	{jid,ToUser,_,_,_,_,_} = To ,	
-	%% 取自配置文件 ejabberd.cfg
-	HTTPServer =  ejabberd_config:get_local_option({http_server,Domain}),
-	%% 取自配置文件 ejabberd.cfg
-	HTTPService = ejabberd_config:get_local_option({http_server_service_client,Domain}),
-	HTTPTarget = string:concat(HTTPServer,HTTPService),
-	Msg = get_text_message_from_packet( Packet ),
-	{Service,Method,FN,TN,MSG,T,MSG_ID,MType} = {
-				      list_to_binary("service.uri.pet_user"),
-				      list_to_binary("pushMsgApn"),
-				      list_to_binary(FromUser),
-				      list_to_binary(ToUser),
-				      list_to_binary(Msg),
-				      list_to_binary(Type),
-				      list_to_binary(MID),
-				      list_to_binary(MsgType)
-				     },
-	ParamObj={obj,[ 
-		       {"service",Service},
-		       {"method",Method},
-		       {"channel",list_to_binary("9")},
-		       {"params",{obj,[{"msgtype",MType},{"fromname",FN},{"toname",TN},{"msg",MSG},{"type",T},{"id",MSG_ID}]} } 
-		      ]},
-	Form = "body="++rfc4627:encode(ParamObj),
-	?DEBUG("MMMMMMMMMMMMMMMMM===Form=~p~n",[Form]),
-	case httpc:request(post,{ HTTPTarget ,[], ?HTTP_HEAD , Form },[],[] ) of   
-		{ok, {_,_,Body}} ->
-			case rfc4627:decode(Body) of
-				{ok,Obj,_Re} -> 
-					case rfc4627:get_field(Obj,"success") of
-						{ok,false} ->
-							{ok,Entity} = rfc4627:get_field(Obj,"entity"),
-							?DEBUG("liangc-push-msg error: ~p~n",[binary_to_list(Entity)]);
-						_ ->
-							false
-					end;
-				_ -> 
-					false
-			end ;
-		{error, Reason} ->
-			?DEBUG("[~ERROR~] cause ~p~n",[Reason])
+	try
+		{jid,FromUser,Domain,_,_,_,_} = From ,	
+		{jid,ToUser,_,_,_,_,_} = To ,	
+		%% 取自配置文件 ejabberd.cfg
+		HTTPServer =  ejabberd_config:get_local_option({http_server,Domain}),
+		%% 取自配置文件 ejabberd.cfg
+		HTTPService = ejabberd_config:get_local_option({http_server_service_client,Domain}),
+		HTTPTarget = string:concat(HTTPServer,HTTPService),
+		Msg = get_text_message_from_packet( Packet ),
+		{Service,Method,FN,TN,MSG,T,MSG_ID,MType} = {
+					      list_to_binary("service.uri.pet_user"),
+					      list_to_binary("pushMsgApn"),
+					      list_to_binary(FromUser),
+					      list_to_binary(ToUser),
+					      list_to_binary(Msg),
+					      list_to_binary(Type),
+					      list_to_binary(MID),
+					      list_to_binary(MsgType)
+					     },
+		ParamObj={obj,[ 
+			       {"service",Service},
+			       {"method",Method},
+			       {"channel",list_to_binary("9")},
+			       {"params",{obj,[{"msgtype",MType},{"fromname",FN},{"toname",TN},{"msg",MSG},{"type",T},{"id",MSG_ID}]} } 
+			      ]},
+		Form = "body="++rfc4627:encode(ParamObj),
+		?DEBUG("MMMMMMMMMMMMMMMMM===Form=~p~n",[Form]),
+		case httpc:request(post,{ HTTPTarget ,[], ?HTTP_HEAD , Form },[],[] ) of   
+			{ok, {_,_,Body}} ->
+				case rfc4627:decode(Body) of
+					{ok,Obj,_Re} -> 
+						case rfc4627:get_field(Obj,"success") of
+							{ok,false} ->
+								{ok,Entity} = rfc4627:get_field(Obj,"entity"),
+								?ERROR_MSG("liangc-push-msg error: ~p~n",[binary_to_list(Entity)]);
+							_ ->
+								false
+						end;
+					_ -> 
+						false
+				end ;
+			{error, Reason} ->
+				?ERROR_MSG("[~ERROR~] cause ~p~n",[Reason])
+		end 
+	catch 
+		_:_ ->
+			Err0 = erlang:get_stacktrace(),
+			?ERROR_MSG("[~ERROR~] offline_message_hook_handler ~p~n",[Err0])
 	end,
 	ok.
 
@@ -231,56 +237,62 @@ sync_user(Domain,FromUser,ToUser,SType) ->
 
 %user_send_packet(From, To, Packet) -> ok
 user_send_packet_handler(#jid{user=FU,server=FD}=From, To, Packet) ->
-	?DEBUG("~n************** my_hookhandler user_send_packet_handler >>>>>>>>>>>>>>>~p~n ",[liangchuan_debug]),
-	?DEBUG("~n~pFrom=~p ; To=~p ; Packet=~p~n ", [liangchuan_debug,From, To, Packet] ),
-	%% From={jid,"cc","test.com","Smack","cc","test.com","Smack"}
-	[_,E|_] = tuple_to_list(Packet),
-	Domain = FD,
-	case E of 
-		"message" ->
-
-			{_,"message",Attr,_} = Packet,
-			?DEBUG("Attr=~p", [Attr] ),
-			D = dict:from_list(Attr),
-			T = dict:fetch("type", D),
-			MT = case dict:is_key("msgtype",D) of true-> dict:fetch("msgtype",D); _-> "" end,
-			%% 理论上讲，这个地方一定要有一个ID，不过如果没有，其实对服务器没影响，但客户端就麻烦了
-			SRC_ID_STR = case dict:is_key("id", D) of true -> dict:fetch("id", D); _ -> "" end,
-			?DEBUG("SRC_ID_STR=~p", [SRC_ID_STR] ),
-			?DEBUG("Type=~p", [T] ),
-			ACK_FROM = case catch ejabberd_config:get_local_option({ack_from ,Domain}) of true -> true; _ -> false end,
-			?DEBUG("ack_from=~p ; Domain=~p ; T=~p ; MT=~p",[ACK_FROM,Domain,T,MT]),
-			SYNCID = SRC_ID_STR++"@"++Domain,
+	try
+		?DEBUG("~n************** my_hookhandler user_send_packet_handler >>>>>>>>>>>>>>>~p~n ",[liangchuan_debug]),
+		?DEBUG("~n~pFrom=~p ; To=~p ; Packet=~p~n ", [liangchuan_debug,From, To, Packet] ),
+		%% From={jid,"cc","test.com","Smack","cc","test.com","Smack"}
+		[_,E|_] = tuple_to_list(Packet),
+		Domain = FD,
+		case E of 
+			"message" ->
 	
-			server_ack(From,To,Packet),
-			%% 判断是否群聊消息，不是根据 msgtype 判断的，是根据收消息人判断，这个逻辑很关键
-			IS_GROUP_CHAT = case aa_group_chat:is_group_chat(To) of  
-				true when MT=/="msgStatus" ->
-					?DEBUG("###### send_group_chat_msg ###### From=~p ; Domain=~p",[From,Domain]),
-					aa_group_chat:route_group_msg(From,To,Packet),
-					true;
-				true when MT=:="msgStatus" -> false;
-				false -> false 
-			end,
-			?DEBUG("IS_GROUP_CHAT=~p ; SRCID=~p",[IS_GROUP_CHAT,SYNCID]),
-			if IS_GROUP_CHAT=:=false,ACK_FROM,MT=/=[],MT=/="msgStatus",FU=/="messageack" ->
-					SyncRes = gen_server:call(?MODULE,{sync_packet,SYNCID,From,To,Packet}),
-					?DEBUG("==> SYNC_RES new => ~p ; ID=~p",[SyncRes,SRC_ID_STR]),
-					ack_task({new,SYNCID,From,To,Packet});
-				IS_GROUP_CHAT=:=false,ACK_FROM,MT=:="msgStatus" ->
-					KK = FU++"@"++FD++"/offline_msg",
-					gen_server:call(?MODULE,{ecache_cmd,["DEL",SYNCID]}),
-					gen_server:call(?MODULE,{ecache_cmd,["ZREM",KK,SYNCID]}),
-					?DEBUG("==> SYNC_RES ack => ACK_USER=~p ; ACK_ID=~p",[KK,SYNCID]),
-					ack_task({ack,SYNCID});
-				true ->
-					skip
-			end;
-		_ ->
-			?DEBUG("~p", [skip_00] ),
-			skip
+				{_,"message",Attr,_} = Packet,
+				?DEBUG("Attr=~p", [Attr] ),
+				D = dict:from_list(Attr),
+				T = dict:fetch("type", D),
+				MT = case dict:is_key("msgtype",D) of true-> dict:fetch("msgtype",D); _-> "" end,
+				%% 理论上讲，这个地方一定要有一个ID，不过如果没有，其实对服务器没影响，但客户端就麻烦了
+				SRC_ID_STR = case dict:is_key("id", D) of true -> dict:fetch("id", D); _ -> "" end,
+				?DEBUG("SRC_ID_STR=~p", [SRC_ID_STR] ),
+				?DEBUG("Type=~p", [T] ),
+				ACK_FROM = case catch ejabberd_config:get_local_option({ack_from ,Domain}) of true -> true; _ -> false end,
+				?DEBUG("ack_from=~p ; Domain=~p ; T=~p ; MT=~p",[ACK_FROM,Domain,T,MT]),
+				SYNCID = SRC_ID_STR++"@"++Domain,
+		
+				server_ack(From,To,Packet),
+				%% 判断是否群聊消息，不是根据 msgtype 判断的，是根据收消息人判断，这个逻辑很关键
+				IS_GROUP_CHAT = case aa_group_chat:is_group_chat(To) of  
+					true when MT=/="msgStatus" ->
+						?DEBUG("###### send_group_chat_msg ###### From=~p ; Domain=~p",[From,Domain]),
+						aa_group_chat:route_group_msg(From,To,Packet),
+						true;
+					true when MT=:="msgStatus" -> false;
+					false -> false 
+				end,
+				?DEBUG("IS_GROUP_CHAT=~p ; SRCID=~p",[IS_GROUP_CHAT,SYNCID]),
+				if IS_GROUP_CHAT=:=false,ACK_FROM,MT=/=[],MT=/="msgStatus",FU=/="messageack" ->
+						SyncRes = gen_server:call(?MODULE,{sync_packet,SYNCID,From,To,Packet}),
+						?DEBUG("==> SYNC_RES new => ~p ; ID=~p",[SyncRes,SRC_ID_STR]),
+						ack_task({new,SYNCID,From,To,Packet});
+					IS_GROUP_CHAT=:=false,ACK_FROM,MT=:="msgStatus" ->
+						KK = FU++"@"++FD++"/offline_msg",
+						gen_server:call(?MODULE,{ecache_cmd,["DEL",SYNCID]}),
+						gen_server:call(?MODULE,{ecache_cmd,["ZREM",KK,SYNCID]}),
+						?DEBUG("==> SYNC_RES ack => ACK_USER=~p ; ACK_ID=~p",[KK,SYNCID]),
+						ack_task({ack,SYNCID});
+					true ->
+						skip
+				end;
+			_ ->
+				?DEBUG("~p", [skip_00] ),
+				skip
+		end,
+		?DEBUG("~n************** my_hookhandler user_send_packet_handler <<<<<<<<<<<<<<<~p~n ",[liangchuan_debug]) 
+	catch
+		_:_ ->
+			Err = erlang:get_stacktrace(),
+			?ERROR_MSG("user_send_packet_handler_error ::> ~p",[Err])
 	end,
-	?DEBUG("~n************** my_hookhandler user_send_packet_handler <<<<<<<<<<<<<<<~p~n ",[liangchuan_debug]),
 	ok.
 
 user_receive_packet_handler(JID, From, To, Packet) ->
