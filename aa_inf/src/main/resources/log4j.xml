@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE log4j:configuration PUBLIC "-//LOGGER" "log4j.dtd">
+
+<log4j:configuration xmlns:log4j="http://jakarta.apache.org/log4j/">
+
+	<!-- ============================== -->
+	<!-- Appenders -->
+	<!-- ============================== -->
+
+	<!-- Provides Console Logging -->
+	<appender name="CONSOLE" class="org.apache.log4j.ConsoleAppender">
+		<param name="Target" value="System.out" />
+
+		<layout class="org.apache.log4j.PatternLayout">
+			<param name="ConversionPattern" value="%d{dd-MM-yyyy HH:mm:ss,SSS z} %-5p [%t] [%c@%L] %m%n" />
+		</layout>
+	</appender>
+
+	<!--  Provides File Logging  -->
+	<appender name="FILE" class="org.apache.log4j.DailyRollingFileAppender">
+		<param name="File" value="./aa_inf.log" />
+		<param name="Append" value="true" />
+		<param name="DatePattern" value="'.'yyyy-MM-dd" />
+
+		<layout class="org.apache.log4j.PatternLayout">
+			<param name="ConversionPattern" value="%d{dd-MM-yyyy HH:mm:ss,SSS z} %-5p [%t] [%c@%L] %m%n" />
+		</layout>
+	</appender>
+
+	<logger name="org.springframework">
+		<level value="warn" />
+	</logger>
+
+	<logger name="org.springframework.core">
+		<level value="info" />
+	</logger>
+
+	<logger name="org.springframework.beans">
+		<level value="info" />
+	</logger>
+
+	<logger name="org.springframework.context">
+		<level value="info" />
+	</logger>
+
+	<logger name="org.springframework.web">
+		<level value="info" />
+	</logger>
+	
+	<logger name="org.apache.tools.ant">
+		<level value="error" />
+	</logger>
+
+	<!-- Turn off form validation messages -->
+	<logger name="org.apache.commons.validator.ValidatorResources">
+		<level value="OFF" />
+	</logger>
+
+	<!-- ======================= -->
+	<!-- Setup the Root logger -->
+	<!-- ======================= -->
+
+	<root>
+		<level value="DEBUG" />
+		<appender-ref ref="FILE" />
+		<appender-ref ref="CONSOLE" />
+	</root>
+	
+</log4j:configuration>
+
+
