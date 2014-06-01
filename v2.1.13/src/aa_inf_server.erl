@@ -55,6 +55,11 @@ run(Packet) ->
 
 loop()->
 	receive
+		{retome_push,SN,Type,Content} ->
+			?INFO_MSG("routem_push ==> SN=~p",[SN]),
+			Packet = build_packet(Type,Content),
+			run(Packet),
+			loop();
 		{push,Packet} ->
 			run(Packet),
 			loop();
@@ -68,6 +73,10 @@ start()->
 
 start(Port)->
 	try
+		[Domain|_] = ?MYHOSTS, 
+		AA_INF_SERVER_NODE =  ejabberd_config:get_local_option({aa_inf_server,Domain}),
+		AA_INF_SERVER_PING = net_adm:ping(AA_INF_SERVER_NODE),
+		?INFO_MSG("aa_inf_server start AA_INFO_SERVER_PING=~p",[AA_INF_SERVER_PING]),
 		LoopPid = erlang:spawn(fun()-> loop() end),
 		RegRtn = erlang:register(aa_inf_server_run,LoopPid),
 		?INFO_MSG("aa_inf_server start looppid=~p ; reg=~p",[LoopPid,RegRtn])

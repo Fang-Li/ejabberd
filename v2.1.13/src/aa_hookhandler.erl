@@ -130,32 +130,34 @@ offline_message_hook_handler(From, To, Packet,D,ID,MsgType ) ->
 %% 将 Packet 中的 Text 消息 Post 到指定的 Http 服务
 %% IOS 消息推送功能
 send_offline_message(From ,To ,Packet,Type,MID,MsgType )->
+	send_offline_message(From,To,Packet,Type,MID,MsgType,0).	
+send_offline_message(From ,To ,Packet,Type,MID,MsgType,N) when N < 3 ->
+	{jid,FromUser,Domain,_,_,_,_} = From ,	
+	{jid,ToUser,_,_,_,_,_} = To ,	
+	%% 取自配置文件 ejabberd.cfg
+	HTTPServer =  ejabberd_config:get_local_option({http_server,Domain}),
+	%% 取自配置文件 ejabberd.cfg
+	HTTPService = ejabberd_config:get_local_option({http_server_service_client,Domain}),
+	HTTPTarget = string:concat(HTTPServer,HTTPService),
+	Msg = get_text_message_from_packet( Packet ),
+	{Service,Method,FN,TN,MSG,T,MSG_ID,MType} = {
+				      list_to_binary("service.uri.pet_user"),
+				      list_to_binary("pushMsgApn"),
+				      list_to_binary(FromUser),
+				      list_to_binary(ToUser),
+				      list_to_binary(Msg),
+				      list_to_binary(Type),
+				      list_to_binary(MID),
+				      list_to_binary(MsgType)
+				     },
+	ParamObj={obj,[ 
+		       {"service",Service},
+		       {"method",Method},
+		       {"channel",list_to_binary("9")},
+		       {"params",{obj,[{"msgtype",MType},{"fromname",FN},{"toname",TN},{"msg",MSG},{"type",T},{"id",MSG_ID}]} } 
+		      ]},
+	Form = "body="++rfc4627:encode(ParamObj),
 	try
-		{jid,FromUser,Domain,_,_,_,_} = From ,	
-		{jid,ToUser,_,_,_,_,_} = To ,	
-		%% 取自配置文件 ejabberd.cfg
-		HTTPServer =  ejabberd_config:get_local_option({http_server,Domain}),
-		%% 取自配置文件 ejabberd.cfg
-		HTTPService = ejabberd_config:get_local_option({http_server_service_client,Domain}),
-		HTTPTarget = string:concat(HTTPServer,HTTPService),
-		Msg = get_text_message_from_packet( Packet ),
-		{Service,Method,FN,TN,MSG,T,MSG_ID,MType} = {
-					      list_to_binary("service.uri.pet_user"),
-					      list_to_binary("pushMsgApn"),
-					      list_to_binary(FromUser),
-					      list_to_binary(ToUser),
-					      list_to_binary(Msg),
-					      list_to_binary(Type),
-					      list_to_binary(MID),
-					      list_to_binary(MsgType)
-					     },
-		ParamObj={obj,[ 
-			       {"service",Service},
-			       {"method",Method},
-			       {"channel",list_to_binary("9")},
-			       {"params",{obj,[{"msgtype",MType},{"fromname",FN},{"toname",TN},{"msg",MSG},{"type",T},{"id",MSG_ID}]} } 
-			      ]},
-		Form = "body="++rfc4627:encode(ParamObj),
 		?DEBUG("MMMMMMMMMMMMMMMMM===Form=~p~n",[Form]),
 		case httpc:request(post,{ HTTPTarget ,[], ?HTTP_HEAD , Form },[],[] ) of   
 			{ok, {_,_,Body}} ->
@@ -172,13 +174,20 @@ send_offline_message(From ,To ,Packet,Type,MID,MsgType )->
 						false
 				end ;
 			{error, Reason} ->
-				?ERROR_MSG("[~ERROR~] cause ~p~n",[Reason])
+				?ERROR_MSG("[ERROR] cause N=~p~nErr=~p~nForm=~p~n",[N,Reason,Form]),
+				timer:sleep(200),
+				send_offline_message(From,To,Packet,Type,MID,MsgType,N+1)
 		end 
 	catch 
 		_:_ ->
 			Err0 = erlang:get_stacktrace(),
-			?ERROR_MSG("[~ERROR~] offline_message_hook_handler ~p~n",[Err0])
+			?ERROR_MSG("[ERROR] offline_message_hook_handler N=~p~nErr=~p~nForm=~p~n",[N,Err0,Form]),
+			timer:sleep(200),
+			send_offline_message(From,To,Packet,Type,MID,MsgType,N+1)	
 	end,
+	ok;
+send_offline_message(From ,To ,Packet,Type,MID,MsgType,3) ->
+	?ERROR_MSG("[ERROR] offline_message_hook_handler_lost ~p",[{From ,To ,Packet,Type,MID,MsgType,3}]),
 	ok.
 
 %roster_in_subscription(Acc, User, Server, JID, SubscriptionType, Reason) -> bool()
@@ -226,7 +235,7 @@ sync_user(Domain,FromUser,ToUser,SType) ->
 					false
 			end ;
 		{error, Reason} ->
-			?DEBUG("[~ERROR~] cause ~p~n",[Reason])
+			?DEBUG("[ERROR] cause ~p~n",[Reason])
 	end,
 	?DEBUG("[--OKOKOKOK--] ~p was done.~n",[addOrRemoveFriend]),
 	ok.
