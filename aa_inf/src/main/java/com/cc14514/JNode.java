@@ -1,6 +1,8 @@
 package com.cc14514;
 
 import java.io.IOException;
+import java.util.Date;
+import java.util.Set;
 
 import javax.annotation.PostConstruct;
 
@@ -10,6 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import com.cc14514.inf.AaRequest;
+import com.cc14514.zoo.ConfigWatcher;
 import com.ericsson.otp.erlang.OtpErlangAtom;
 import com.ericsson.otp.erlang.OtpErlangObject;
 import com.ericsson.otp.erlang.OtpErlangString;
@@ -26,15 +29,26 @@ public class JNode {
 	private String nodeName = null;
 	private String nodeBox = null;
 
+	private static String nodeMapBasePath = "/ejabberd-node";
+	public ConfigWatcher nodeMap = null;
 	@Autowired
-	public JNode(String nodeCookie, String nodePing, String nodeName,String nodeBox) throws Exception {
+	public JNode(String nodeCookie, String nodePing, String nodeName,String nodeBox,String zooServer) throws Exception {
 		super();
 		this.nodeCookie = nodeCookie;
 		this.nodePing = nodePing;
 		this.nodeName = nodeName;
 		this.nodeBox = nodeBox;
+		this.nodeMap = new ConfigWatcher(zooServer,nodeMapBasePath);
 	}
-
+	
+	public String getNode(){
+		Set<String> keyset = nodeMap.publicConfig.keySet();
+		Object[] arr = keyset.toArray();
+		int len = arr.length;
+		long t = new Date().getTime();
+		return arr[(int)(t%len)].toString();
+	}
+	
 	@PostConstruct
 	private void start_link() throws Exception {
 		new Thread(new Runnable() {
@@ -60,7 +74,9 @@ public class JNode {
 								OtpErlangString type = new OtpErlangString(aa.getType());
 								OtpErlangString content = new OtpErlangString(aa.getContent());
 								OtpErlangTuple packet = new OtpErlangTuple(new OtpErlangObject[]{fun,sn,type,content});
-								box.send("aa_inf_server_run", nodePing, packet);
+								String targetNode = getNode();
+								logger.info("sn="+sn+" ; targetNode="+targetNode);
+								box.send("aa_inf_server_run", targetNode , packet);
 							} catch (Exception e) {
 								logger.error("error", e);
 							}

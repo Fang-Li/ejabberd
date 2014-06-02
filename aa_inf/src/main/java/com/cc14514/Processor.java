@@ -15,12 +15,10 @@ public class Processor {
 	
 	public static BlockingQueue<AaRequest> queue = new ArrayBlockingQueue<AaRequest>(100000, true);
 	
-	private static Thread pro = null;
-
 	public static void put(AaRequest request){
 		try {
 			queue.put(request);
-			logger.info("queue_size="+queue.size()+" ; "+request.toString());
+			logger.debug("queue_size="+queue.size()+" ; "+request.toString());
 		} catch (InterruptedException e) {
 			e.printStackTrace();
 			logger.error("queue_put_error", e);
