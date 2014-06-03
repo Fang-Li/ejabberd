@@ -56,9 +56,15 @@ run(Packet) ->
 loop()->
 	receive
 		{retome_push,SN,Type,Content} ->
-			?INFO_MSG("routem_push ==> SN=~p",[SN]),
-			Packet = build_packet(Type,Content),
-			run(Packet),
+			try
+				?INFO_MSG("routem_push ==> SN=~p",[SN]),
+				?DEBUG("routem_push ==> SN=~p~n ; Content=~p~n ; Decode=~p~n",[SN,Content,binary_to_list(Content)]),
+				Packet = build_packet(Type,Content),
+				run(Packet)
+			catch
+				E0:E1 ->
+					?ERROR_MSG("retome_push_error : ~p",[{E0,E1,erlang:get_stacktrace()}])	
+			end,
 			loop();
 		{push,Packet} ->
 			run(Packet),
