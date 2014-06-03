@@ -57,10 +57,10 @@ public class JNode {
 			public void run() {
 					try {
 						OtpNode node = new OtpNode(nodeName, nodeCookie);
-						if(node.ping(nodePing, 1000)){
-							logger.debug("true_ping="+nodeName);
-						}else{
-							logger.debug("false_ping="+nodeName);
+						Set<String> keyset = nodeMap.publicConfig.keySet();
+						for(String n : keyset){
+							boolean rtn = node.ping(n, 1000);
+							logger.debug("ping="+n+" ; rtn="+rtn);
 						}
 						OtpMbox box = node.createMbox(nodeBox);
 						logger.debug("start_link...nodeName=" + nodeName);
