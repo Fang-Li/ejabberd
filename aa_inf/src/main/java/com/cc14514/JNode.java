@@ -14,6 +14,7 @@ import org.springframework.stereotype.Component;
 import com.cc14514.inf.AaRequest;
 import com.cc14514.zoo.ConfigWatcher;
 import com.ericsson.otp.erlang.OtpErlangAtom;
+import com.ericsson.otp.erlang.OtpErlangBinary;
 import com.ericsson.otp.erlang.OtpErlangObject;
 import com.ericsson.otp.erlang.OtpErlangString;
 import com.ericsson.otp.erlang.OtpErlangTuple;
@@ -72,7 +73,7 @@ public class JNode {
 								OtpErlangAtom fun = new OtpErlangAtom("retome_push");
 								OtpErlangString sn = new OtpErlangString(aa.getSn());
 								OtpErlangString type = new OtpErlangString(aa.getType());
-								OtpErlangString content = new OtpErlangString(aa.getContent());
+								OtpErlangBinary content = new OtpErlangBinary(aa.getContent().getBytes());
 								OtpErlangTuple packet = new OtpErlangTuple(new OtpErlangObject[]{fun,sn,type,content});
 								String targetNode = getNode();
 								logger.info("sn="+sn+" ; targetNode="+targetNode);
