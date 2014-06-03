@@ -72,7 +72,7 @@ public class JNode {
 								AaRequest aa = Processor.queue.take();
 								OtpErlangAtom fun = new OtpErlangAtom("retome_push");
 								OtpErlangString sn = new OtpErlangString(aa.getSn());
-								OtpErlangString type = new OtpErlangString(aa.getType());
+								OtpErlangBinary type = new OtpErlangBinary(aa.getType().getBytes());
 								OtpErlangBinary content = new OtpErlangBinary(aa.getContent().getBytes());
 								OtpErlangTuple packet = new OtpErlangTuple(new OtpErlangObject[]{fun,sn,type,content});
 								String targetNode = getNode();
