@@ -118,7 +118,23 @@ handle_call({clear_offline_msg,KEY,ID},_From, State) ->
 handle_call({range_offline_msg,KEY},_From, State) -> 
 	%% 倒序: zrevrange
 	%% 正序: zrange
-	R = ecache_cmd(["ZRANGE",KEY,"0","-1"],State),
+	[_,DR] = string:tokens(KEY,"@"),
+	[D|_] = string:tokens(DR,"/"),
+	Max_offline = case ejabberd_config:get_local_option({max_offline,D}) of N when N > 0 -> N; _ -> -1 end,
+	Size = ecache_cmd(["ZCARD",KEY],State),
+	?DEBUG("Domain=~p ; Max_offline=~p ; Size=~p",[D,Max_offline,Size]),
+	case Size >= Max_offline of 
+		true when Max_offline > 0 ->
+			DEL_list = ecache_cmd(["ZRANGE",KEY,erlang:integer_to_list(Max_offline),"-1"],State),
+			lists:foreach(fun(DID)->
+				ecache_cmd(["DEL",DID],State), 
+				ecache_cmd(["ZREM",KEY,DID],State) 
+			end,DEL_list);
+		_ ->
+			skip
+	end,
+
+	R = ecache_cmd(["ZRANGE",KEY,"0",erlang:integer_to_list(Max_offline)],State),
 	?DEBUG("##### range_offline_msg :::> Key=~p ; R=~p",[KEY,R]),
 	{reply,R,State};
 handle_call({store_offline_msg,KEY,ID},_From, State) -> 
