@@ -120,7 +120,7 @@ handle_call({range_offline_msg,KEY},_From, State) ->
 	%% 正序: zrange
 	[_,DR] = string:tokens(KEY,"@"),
 	[D|_] = string:tokens(DR,"/"),
-	Max_offline = case ejabberd_config:get_local_option({max_offline,D}) of N when N > 0 -> N; _ -> -1 end,
+	Max_offline = case ejabberd_config:get_local_option({max_offline,D}) of N when is_integer(N),N > 0 -> N; _ -> -1 end,
 	Size = ecache_cmd(["ZCARD",KEY],State),
 	?DEBUG("Domain=~p ; Max_offline=~p ; Size=~p",[D,Max_offline,Size]),
 	case Size >= Max_offline of 
