@@ -14,10 +14,12 @@
 -export([
 	start_link/0,
 	route_group_msg/3,
-	is_group_chat/1
+	is_group_chat/1,
+	append_user/1,
+	remove_user/1
 ]).
 
--record(state, {}).
+-record(state, { ecache_node, ecache_mod=ecache_server, ecache_fun=cmd }).
 
 start() ->
 	aa_group_chat_sup:start_child().
@@ -34,26 +36,94 @@ route_group_msg(From,To,Packet)->
 	gen_server:call(Pid,{route_group_msg,From,To,Packet}),
 	stop(Pid).
 
+%% {"service":"group_chat","method":"remove_user","params":{"domain":"test.com","gid":"123123","uid":"123123"}}
+%% "{\"method\":\"remove_user\",\"params\":{\"domain\":\"test.com\",\"gid\":\"123123\",\"uid\":\"123123\"}}"
+append_user(Body)->
+	{ok,Obj,_Re} = rfc4627:decode(Body),
+	{ok,Params} = rfc4627:get_field(Obj,"params"),
+	{ok,Domain} = rfc4627:get_field(Params,"domain"),
+	{ok,Gid} = rfc4627:get_field(Params,"gid"),
+	{ok,Uid} = rfc4627:get_field(Params,"uid"),
+	Key = binary_to_list(Gid)++"@group."++binary_to_list(Domain),
+	case gen_server:call(?MODULE,{ecache_cmd,["ZCARD",Key]}) of 
+		[N] when is_integer(N),N>0 ->
+			gen_server:call(?MODULE,{ecache_cmd,["ZADD",Key,Uid]}); 
+		_ ->
+			skip
+	end,	
+	ok.
+
+remove_user(Body)->
+	{ok,Obj,_Re} = rfc4627:decode(Body),
+	{ok,Params} = rfc4627:get_field(Obj,"params"),
+	{ok,Domain} = rfc4627:get_field(Params,"domain"),
+	{ok,Gid} = rfc4627:get_field(Params,"gid"),
+	{ok,Uid} = rfc4627:get_field(Params,"uid"),
+	Key = binary_to_list(Gid)++"@group."++binary_to_list(Domain),
+	case gen_server:call(?MODULE,{ecache_cmd,["ZCARD",Key]}) of 
+		[N] when is_integer(N),N>0 ->
+			gen_server:call(?MODULE,{ecache_cmd,["ZREM",Key,Uid]}); 
+		_ ->
+			skip
+	end,	
+	ok.
+
 %% ====================================================================
 %% Behavioural functions 
 %% ====================================================================
 init([]) ->
-	{ok,#state{}}.
+	Conn = conn_ecache_node(),
+	{ok,_,Node} = Conn,
+	{ok, #state{ecache_node=Node}}.
 
 handle_call({route_group_msg,#jid{server=Domain}=From,#jid{user=GroupId}=To,Packet}, _From, State) ->
-	case get_user_list_by_group_id(Domain,GroupId) of 
-		{ok,UserList} ->
+	%% 如果关闭组的cache那么就不保存组信息
+	Disable_group_cache =  ejabberd_config:get_local_option({disable_group_cache,Domain}),
+	Key = GroupId++"@group."++Domain,
+	?DEBUG("###### get_user_list_by_group_id_key :::> key=~p ; disable_group_cache=~p",[Key,Disable_group_cache]),
+	Result = case ecache_cmd(["ZCARD",Key],State) of
+		[N] when is_integer(N),N>0 ->
+			RList = ecache_cmd(["ZRANGE",Key,"0","-1"],State), 
+			?DEBUG("###### get_user_list_by_group_id_cache :::> GroupId=~p ; Roster=~p",[GroupId,RList]),
+			{ok,RList};
+		_ ->
+			case get_user_list_by_group_id(Domain,GroupId) of 
+				{ok,UserList} ->
+					%% -record(jid, {user, server, resource, luser, lserver, lresource}).
+					RList = lists:map(fun(User)-> 
+						UID = binary_to_list(User), 
+						case Disable_group_cache of
+							true ->
+								disabled;
+							_ ->
+								ecache_cmd(["ZADD",Key,UID],State)
+						end,
+						UID
+					end,UserList),
+					?DEBUG("###### get_user_list_by_group_id_http :::> GroupId=~p ; Roster=~p",[GroupId,RList]),
+					{ok,RList};
+				Err ->
+					?ERROR_MSG("ERROR=~p",[Err]),
+					error
+			end
+	end,
+	case Result of
+		{ok,List} ->
 			%% -record(jid, {user, server, resource, luser, lserver, lresource}).
-			Roster = lists:map(fun(User)-> 
-				UID = binary_to_list(User),
+			Roster = lists:map(fun(UID)-> 
 				#jid{user=UID,server=Domain,luser=UID,lserver=Domain,resource=[],lresource=[]} 
-			end,UserList),
+			end,List),
 			?DEBUG("###### route_group_msg 002 :::> GroupId=~p ; Roster=~p",[GroupId,Roster]),
 			lists:foreach(fun(Target)-> route_msg(From,Target,Packet,GroupId) end,Roster);
-		Err ->
+		_ ->
+			?ERROR_MSG("group_user_list_empty_or_can_not_get  key=~p",[Key]),
 			error
-	end,	
-	{reply,[],State}.
+	end,
+	{reply,[],State};
+handle_call({ecache_cmd,Cmd},_From, State) ->
+	?DEBUG("##### ecache_cmd_on_offline_mod :::> Cmd=~p",[Cmd]),
+	{reply,ecache_cmd(Cmd,State),State}.
+
 
 handle_cast(stop, State) ->
 	{stop, normal, State}.
@@ -157,3 +227,18 @@ is_group_chat(#jid{server=Domain}=To)->
 	end,
 	?DEBUG("##### is_group_chat ::::>To~p ; Rtn=~p",[To,Rtn]),
 	Rtn.
+
+
+conn_ecache_node() ->
+	try 
+		[Domain|_] = ?MYHOSTS, 
+		N = ejabberd_config:get_local_option({ecache_node,Domain}), 
+		{ok,net_adm:ping(N),N} 
+	catch E:I -> 
+		Err = erlang:get_stacktrace(), 
+		log4erl:error("error ::::> E=~p ; I=~p~n Error=~p",[E,I,Err]), 
+		{error,E,I} 
+	end.  
+
+ecache_cmd(Cmd,#state{ecache_node=Node,ecache_mod=Mod,ecache_fun=Fun}=State) ->
+	rpc:call(Node,Mod,Fun,[{Cmd}]).
