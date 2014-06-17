@@ -2,6 +2,8 @@ package com.cc14514;
 
 import java.io.IOException;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 
 import javax.annotation.PostConstruct;
@@ -42,13 +44,28 @@ public class JNode {
 		this.nodeMap = new ConfigWatcher(zooServer,nodeMapBasePath);
 	}
 	
-	public String getNode(){
-		Set<String> keyset = nodeMap.publicConfig.keySet();
+	public String getNode(OtpNode node ){
+		Set<String> keyset = eNode.keySet();
 		Object[] arr = keyset.toArray();
 		int len = arr.length;
 		long t = new Date().getTime();
-		return arr[(int)(t%len)].toString();
+		String n = arr[(int)(t%len)].toString();
+		if(liveNode.get(n)!=null){
+			return n;
+		}else{
+			boolean rtn = node.ping(n, 1000);
+			logger.debug("ping="+n+" ; rtn="+rtn);
+			if(rtn){
+				liveNode.put(n, eNode.get(n));
+				return n;
+			}else{
+				return getNode(node);
+			}
+		}
 	}
+	
+	static Map<String,String> eNode = new HashMap<String,String>();
+	static Map<String,String> liveNode = new HashMap<String,String>();
 	
 	@PostConstruct
 	private void start_link() throws Exception {
@@ -59,8 +76,14 @@ public class JNode {
 						OtpNode node = new OtpNode(nodeName, nodeCookie);
 						Set<String> keyset = nodeMap.publicConfig.keySet();
 						for(String n : keyset){
-							boolean rtn = node.ping(n, 1000);
-							logger.debug("ping="+n+" ; rtn="+rtn);
+							if(n.startsWith("ejabberd@")){
+								eNode.put(n, nodeMap.publicConfig.get(n));
+								boolean rtn = node.ping(n, 1000);
+								logger.debug("ping="+n+" ; rtn="+rtn);
+								if(rtn){
+									liveNode.put(n, nodeMap.publicConfig.get(n));
+								}
+							}
 						}
 						OtpMbox box = node.createMbox(nodeBox);
 						logger.debug("start_link...nodeName=" + nodeName);
@@ -75,7 +98,7 @@ public class JNode {
 								OtpErlangBinary type = new OtpErlangBinary(aa.getType().getBytes());
 								OtpErlangBinary content = new OtpErlangBinary(aa.getContent().getBytes());
 								OtpErlangTuple packet = new OtpErlangTuple(new OtpErlangObject[]{fun,sn,type,content});
-								String targetNode = getNode();
+								String targetNode = getNode(node);
 								logger.info("sn="+sn+" ; targetNode="+targetNode);
 								box.send("aa_inf_server_run", targetNode , packet);
 							} catch (Exception e) {
