@@ -150,11 +150,20 @@ send_offline_message(From ,To ,Packet,Type,MID,MsgType,N) when N < 3 ->
 				      list_to_binary(MID),
 				      list_to_binary(MsgType)
 				     },
+	Gid = case MsgType of
+		"groupchat" ->
+			{xmlelement,"message",Header,_ } = Packet,
+			D = dict:from_list(Header),
+			GroupID = dict:fetch("gid", D),
+			list_to_binary(GroupID);
+		_ ->
+			<<"">>
+	end,
 	ParamObj={obj,[ 
 		       {"service",Service},
 		       {"method",Method},
 		       {"channel",list_to_binary("9")},
-		       {"params",{obj,[{"msgtype",MType},{"fromname",FN},{"toname",TN},{"msg",MSG},{"type",T},{"id",MSG_ID}]} } 
+		       {"params",{obj,[{"msgtype",MType},{"fromname",FN},{"toname",TN},{"msg",MSG},{"type",T},{"id",MSG_ID},{"gid",Gid}]} } 
 		      ]},
 	Form = "body="++rfc4627:encode(ParamObj),
 	try
