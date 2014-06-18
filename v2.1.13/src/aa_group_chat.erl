@@ -16,7 +16,8 @@
 	route_group_msg/3,
 	is_group_chat/1,
 	append_user/1,
-	remove_user/1
+	remove_user/1,
+	remove_group/1
 ]).
 
 -record(state, { ecache_node, ecache_mod=ecache_server, ecache_fun=cmd }).
@@ -39,6 +40,7 @@ route_group_msg(From,To,Packet)->
 %% {"service":"group_chat","method":"remove_user","params":{"domain":"test.com","gid":"123123","uid":"123123"}}
 %% "{\"method\":\"remove_user\",\"params\":{\"domain\":\"test.com\",\"gid\":\"123123\",\"uid\":\"123123\"}}"
 append_user(Body)->
+	?DEBUG("append_user body=~p",[Body]),
 	{ok,Obj,_Re} = rfc4627:decode(Body),
 	{ok,Params} = rfc4627:get_field(Obj,"params"),
 	{ok,Domain} = rfc4627:get_field(Params,"domain"),
@@ -52,8 +54,8 @@ append_user(Body)->
 			skip
 	end,	
 	ok.
-
 remove_user(Body)->
+	?DEBUG("remove_user body=~p",[Body]),
 	{ok,Obj,_Re} = rfc4627:decode(Body),
 	{ok,Params} = rfc4627:get_field(Obj,"params"),
 	{ok,Domain} = rfc4627:get_field(Params,"domain"),
@@ -67,6 +69,15 @@ remove_user(Body)->
 			skip
 	end,	
 	ok.
+remove_group(Body)->
+	?DEBUG("remove_group body=~p",[Body]),
+	{ok,Obj,_Re} = rfc4627:decode(Body),
+	{ok,Params} = rfc4627:get_field(Obj,"params"),
+	{ok,Domain} = rfc4627:get_field(Params,"domain"),
+	{ok,Gid} = rfc4627:get_field(Params,"gid"),
+	Key = binary_to_list(Gid)++"@group."++binary_to_list(Domain),
+	gen_server:call(?MODULE,{ecache_cmd,["DEL",Key]}), 
+	ok.
 
 %% ====================================================================
 %% Behavioural functions 
@@ -76,7 +87,7 @@ init([]) ->
 	{ok,_,Node} = Conn,
 	{ok, #state{ecache_node=Node}}.
 
-handle_call({route_group_msg,#jid{server=Domain}=From,#jid{user=GroupId}=To,Packet}, _From, State) ->
+handle_call({route_group_msg,#jid{server=Domain,user=FU}=From,#jid{user=GroupId}=To,Packet}, _From, State) ->
 	%% 如果关闭组的cache那么就不保存组信息
 	Disable_group_cache =  ejabberd_config:get_local_option({disable_group_cache,Domain}),
 	Key = GroupId++"@group."++Domain,
@@ -107,16 +118,22 @@ handle_call({route_group_msg,#jid{server=Domain}=From,#jid{user=GroupId}=To,Pack
 					error
 			end
 	end,
-	case Result of
-		{ok,List} ->
-			%% -record(jid, {user, server, resource, luser, lserver, lresource}).
-			Roster = lists:map(fun(UID)-> 
-				#jid{user=UID,server=Domain,luser=UID,lserver=Domain,resource=[],lresource=[]} 
-			end,List),
-			?DEBUG("###### route_group_msg 002 :::> GroupId=~p ; Roster=~p",[GroupId,Roster]),
-			lists:foreach(fun(Target)-> route_msg(From,Target,Packet,GroupId) end,Roster);
+	case lists:member(FU,Result) of
+		true->
+			case Result of
+				{ok,List} ->
+					%% -record(jid, {user, server, resource, luser, lserver, lresource}).
+					Roster = lists:map(fun(UID)-> 
+						#jid{user=UID,server=Domain,luser=UID,lserver=Domain,resource=[],lresource=[]} 
+					end,List),
+					?DEBUG("###### route_group_msg 002 :::> GroupId=~p ; Roster=~p",[GroupId,Roster]),
+					lists:foreach(fun(Target)-> route_msg(From,Target,Packet,GroupId) end,Roster);
+				_ ->
+					?ERROR_MSG("group_user_list_empty_or_can_not_get  key=~p",[Key]),
+					error
+			end;
 		_ ->
-			?ERROR_MSG("group_user_list_empty_or_can_not_get  key=~p",[Key]),
+			?ERROR_MSG("from_user_not_in_group Key=~p ; from_user=~p",[Key,FU]), 
 			error
 	end,
 	{reply,[],State};
