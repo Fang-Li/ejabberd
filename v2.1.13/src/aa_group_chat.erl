@@ -50,7 +50,7 @@ append_user(Body)->
 	Key = binary_to_list(Gid)++"@group."++binary_to_list(Domain),
 	case gen_server:call(Pid,{ecache_cmd,["ZCARD",Key]}) of 
 		[N] when is_integer(N),N>0 ->
-			gen_server:call(Pid,{ecache_cmd,["ZADD",Key,Uid]}); 
+			gen_server:call(Pid,{ecache_cmd,["ZADD",Key,index_score(),Uid]}); 
 		_ ->
 			skip
 	end,	
@@ -109,7 +109,7 @@ handle_call({route_group_msg,#jid{server=Domain,user=FU}=From,#jid{user=GroupId}
 							true ->
 								disabled;
 							_ ->
-								Rss = ecache_cmd(["ZADD",Key,UID],State),
+								Rss = ecache_cmd(["ZADD",Key,index_score(),UID],State),
 								?DEBUG("###### add_to_cache :::> Key=~p ; UID=~p ; Rss=~p",[Key,UID,Rss])
 						end,
 						UID
@@ -272,3 +272,6 @@ conn_ecache_node() ->
 
 ecache_cmd(Cmd,#state{ecache_node=Node,ecache_mod=Mod,ecache_fun=Fun}=State) ->
 	rpc:call(Node,Mod,Fun,[{Cmd}]).
+
+
+index_score()-> {M,S,T} = now(), erlang:integer_to_list(M*1000000000000+S*1000000+T).
