@@ -49,10 +49,10 @@ append_user(Body)->
 	{ok,Uid} = rfc4627:get_field(Params,"uid"),
 	Key = binary_to_list(Gid)++"@group."++binary_to_list(Domain),
 	case gen_server:call(Pid,{ecache_cmd,["ZCARD",Key]}) of 
-		[N] when is_integer(N),N>0 ->
-			gen_server:call(Pid,{ecache_cmd,["ZADD",Key,index_score(),Uid]}); 
+		[<<"0">>] ->
+			skip;
 		_ ->
-			skip
+			gen_server:call(Pid,{ecache_cmd,["ZADD",Key,index_score(),Uid]})
 	end,	
 	stop(Pid),
 	ok.
@@ -66,10 +66,10 @@ remove_user(Body)->
 	{ok,Uid} = rfc4627:get_field(Params,"uid"),
 	Key = binary_to_list(Gid)++"@group."++binary_to_list(Domain),
 	case gen_server:call(Pid,{ecache_cmd,["ZCARD",Key]}) of 
-		[N] when is_integer(N),N>0 ->
-			gen_server:call(Pid,{ecache_cmd,["ZREM",Key,Uid]}); 
+		[<<"0">>] ->
+			skip;
 		_ ->
-			skip
+			gen_server:call(Pid,{ecache_cmd,["ZREM",Key,Uid]})
 	end,	
 	stop(Pid),
 	ok.
