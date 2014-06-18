@@ -29,7 +29,7 @@ stop(Pid)->
 	gen_server:cast(Pid,stop).
 
 start_link() ->
-	gen_server:start_link(?MODULE,[],[]).
+	gen_server:start_link({local,?MODULE},?MODULE,[],[]).
 
 route_group_msg(From,To,Packet)->
 	{ok,Pid} = start(),
@@ -138,7 +138,7 @@ handle_call({route_group_msg,#jid{server=Domain,user=FU}=From,#jid{user=GroupId}
 	end,
 	{reply,[],State};
 handle_call({ecache_cmd,Cmd},_From, State) ->
-	?DEBUG("##### ecache_cmd_on_offline_mod :::> Cmd=~p",[Cmd]),
+	?DEBUG("##### ecache_cmd_on_group_chat_mod :::> Cmd=~p",[Cmd]),
 	{reply,ecache_cmd(Cmd,State),State}.
 
 
