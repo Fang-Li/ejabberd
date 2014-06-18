@@ -124,22 +124,27 @@ handle_call({route_group_msg,#jid{server=Domain,user=FU}=From,#jid{user=GroupId}
 					error
 			end
 	end,
-	case lists:member(FU,Result) of
-		true->
-			case Result of
-				{ok,List} ->
-					%% -record(jid, {user, server, resource, luser, lserver, lresource}).
-					Roster = lists:map(fun(UID)-> 
-						#jid{user=UID,server=Domain,luser=UID,lserver=Domain,resource=[],lresource=[]} 
-					end,List),
-					?DEBUG("###### route_group_msg 002 :::> GroupId=~p ; Roster=~p",[GroupId,Roster]),
-					lists:foreach(fun(Target)-> route_msg(From,Target,Packet,GroupId) end,Roster);
+	case Result of
+		{ok,Res} ->
+			case lists:member(FU,Res) of
+				true->
+					case Result of
+						{ok,List} ->
+							%% -record(jid, {user, server, resource, luser, lserver, lresource}).
+							Roster = lists:map(fun(UID)-> 
+								#jid{user=UID,server=Domain,luser=UID,lserver=Domain,resource=[],lresource=[]} 
+							end,List),
+							?DEBUG("###### route_group_msg 002 :::> GroupId=~p ; Roster=~p",[GroupId,Roster]),
+							lists:foreach(fun(Target)-> route_msg(From,Target,Packet,GroupId) end,Roster);
+						_ ->
+							?ERROR_MSG("group_user_list_empty_or_can_not_get  key=~p",[Key]),
+							error
+					end;
 				_ ->
-					?ERROR_MSG("group_user_list_empty_or_can_not_get  key=~p",[Key]),
+					?ERROR_MSG("from_user_not_in_group Key=~p ; from_user=~p",[Key,FU]), 
 					error
 			end;
 		_ ->
-			?ERROR_MSG("from_user_not_in_group Key=~p ; from_user=~p",[Key,FU]), 
 			error
 	end,
 	{reply,[],State};
