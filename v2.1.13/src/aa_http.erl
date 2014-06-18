@@ -114,7 +114,9 @@ handle_call({handle_http,Req}, _From, State) ->
 				http_response({#success{success=false,entity=list_to_binary("method undifine")},Req})
 		end
 	catch
-		_:Reason -> ?INFO_MSG("==== aa_http ==== ::> ~p",[Reason]) 
+		_:Reason -> 
+			?INFO_MSG("==== aa_http ==== ::> ~p",[Reason]), 
+			http_response({#success{success=false,entity=list_to_binary("error")},Req})
 	end,
 	{reply,Reply, State};
 
