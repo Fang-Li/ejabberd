@@ -29,7 +29,7 @@ stop(Pid)->
 	gen_server:cast(Pid,stop).
 
 start_link() ->
-	gen_server:start_link({local,?MODULE},?MODULE,[],[]).
+	gen_server:start_link(?MODULE,[],[]).
 
 route_group_msg(From,To,Packet)->
 	{ok,Pid} = start(),
@@ -40,6 +40,7 @@ route_group_msg(From,To,Packet)->
 %% {"service":"group_chat","method":"remove_user","params":{"domain":"test.com","gid":"123123","uid":"123123"}}
 %% "{\"method\":\"remove_user\",\"params\":{\"domain\":\"test.com\",\"gid\":\"123123\",\"uid\":\"123123\"}}"
 append_user(Body)->
+	{ok,Pid} = start(),
 	?DEBUG("append_user body=~p",[Body]),
 	{ok,Obj,_Re} = rfc4627:decode(Body),
 	{ok,Params} = rfc4627:get_field(Obj,"params"),
@@ -47,14 +48,16 @@ append_user(Body)->
 	{ok,Gid} = rfc4627:get_field(Params,"gid"),
 	{ok,Uid} = rfc4627:get_field(Params,"uid"),
 	Key = binary_to_list(Gid)++"@group."++binary_to_list(Domain),
-	case gen_server:call(?MODULE,{ecache_cmd,["ZCARD",Key]}) of 
+	case gen_server:call(Pid,{ecache_cmd,["ZCARD",Key]}) of 
 		[N] when is_integer(N),N>0 ->
-			gen_server:call(?MODULE,{ecache_cmd,["ZADD",Key,Uid]}); 
+			gen_server:call(Pid,{ecache_cmd,["ZADD",Key,Uid]}); 
 		_ ->
 			skip
 	end,	
+	stop(Pid),
 	ok.
 remove_user(Body)->
+	{ok,Pid} = start(),
 	?DEBUG("remove_user body=~p",[Body]),
 	{ok,Obj,_Re} = rfc4627:decode(Body),
 	{ok,Params} = rfc4627:get_field(Obj,"params"),
@@ -62,21 +65,24 @@ remove_user(Body)->
 	{ok,Gid} = rfc4627:get_field(Params,"gid"),
 	{ok,Uid} = rfc4627:get_field(Params,"uid"),
 	Key = binary_to_list(Gid)++"@group."++binary_to_list(Domain),
-	case gen_server:call(?MODULE,{ecache_cmd,["ZCARD",Key]}) of 
+	case gen_server:call(Pid,{ecache_cmd,["ZCARD",Key]}) of 
 		[N] when is_integer(N),N>0 ->
-			gen_server:call(?MODULE,{ecache_cmd,["ZREM",Key,Uid]}); 
+			gen_server:call(Pid,{ecache_cmd,["ZREM",Key,Uid]}); 
 		_ ->
 			skip
 	end,	
+	stop(Pid),
 	ok.
 remove_group(Body)->
+	{ok,Pid} = start(),
 	?DEBUG("remove_group body=~p",[Body]),
 	{ok,Obj,_Re} = rfc4627:decode(Body),
 	{ok,Params} = rfc4627:get_field(Obj,"params"),
 	{ok,Domain} = rfc4627:get_field(Params,"domain"),
 	{ok,Gid} = rfc4627:get_field(Params,"gid"),
 	Key = binary_to_list(Gid)++"@group."++binary_to_list(Domain),
-	gen_server:call(?MODULE,{ecache_cmd,["DEL",Key]}), 
+	gen_server:call(Pid,{ecache_cmd,["DEL",Key]}), 
+	stop(Pid),
 	ok.
 
 %% ====================================================================
