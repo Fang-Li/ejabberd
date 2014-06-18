@@ -99,11 +99,7 @@ handle_call({route_group_msg,#jid{server=Domain,user=FU}=From,#jid{user=GroupId}
 	Key = GroupId++"@group."++Domain,
 	?DEBUG("###### get_user_list_by_group_id_key :::> key=~p ; disable_group_cache=~p",[Key,Disable_group_cache]),
 	Result = case ecache_cmd(["ZCARD",Key],State) of
-		[N] when is_integer(N),N>0 ->
-			RList = ecache_cmd(["ZRANGE",Key,"0","-1"],State), 
-			?DEBUG("###### get_user_list_by_group_id_cache :::> GroupId=~p ; Roster=~p",[GroupId,RList]),
-			{ok,RList};
-		_ ->
+		[<<"0">>] ->
 			case get_user_list_by_group_id(Domain,GroupId) of 
 				{ok,UserList} ->
 					%% -record(jid, {user, server, resource, luser, lserver, lresource}).
@@ -113,7 +109,8 @@ handle_call({route_group_msg,#jid{server=Domain,user=FU}=From,#jid{user=GroupId}
 							true ->
 								disabled;
 							_ ->
-								ecache_cmd(["ZADD",Key,UID],State)
+								Rss = ecache_cmd(["ZADD",Key,UID],State),
+								?DEBUG("###### add_to_cache :::> Key=~p ; UID=~p ; Rss=~p",[Key,UID,Rss])
 						end,
 						UID
 					end,UserList),
@@ -122,7 +119,12 @@ handle_call({route_group_msg,#jid{server=Domain,user=FU}=From,#jid{user=GroupId}
 				Err ->
 					?ERROR_MSG("ERROR=~p",[Err]),
 					error
-			end
+			end;
+		[BN] ->
+			?DEBUG("###### get_user_list_by_group_id_cache_n=~p",[BN]),
+			RList = ecache_cmd(["ZRANGE",Key,"0","-1"],State), 
+			?DEBUG("###### get_user_list_by_group_id_cache :::> GroupId=~p ; Roster=~p",[GroupId,RList]),
+			{ok,RList} 
 	end,
 	case Result of
 		{ok,Res} ->
