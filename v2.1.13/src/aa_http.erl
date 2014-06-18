@@ -101,6 +101,15 @@ handle_call({handle_http,Req}, _From, State) ->
 			"get_user_list" ->
 				UserList = aa_session:get_user_list(Body),	
 				http_response({#success{success=true,entity=UserList},Req});
+			"remove_group" ->
+				Result = aa_group_chat:remove_group(Body),	
+				http_response({#success{success=true,entity=Result},Req});
+			"remove_user" ->
+				Result = aa_group_chat:remove_user(Body),	
+				http_response({#success{success=true,entity=Result},Req});
+			"append_user" ->
+				Result = aa_group_chat:append_user(Body),	
+				http_response({#success{success=true,entity=Result},Req});
 			_ ->
 				http_response({#success{success=false,entity=list_to_binary("method undifine")},Req})
 		end
