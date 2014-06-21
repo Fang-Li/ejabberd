@@ -79,7 +79,7 @@ offline_message_hook_handler(#jid{user=FromUser}=From, #jid{user=User,server=Dom
 	IS_GROUP = aa_group_chat:is_group_chat(To),
 	if IS_GROUP==false,FromUser=/="messageack",User=/="messageack",Type=/="error",Type=/="groupchat",Type=/="headline" ->
 			SYNCID = ID++"@"++Domain,
-			Time = xml:get_tag_attr_s("msgTime", Packet),
+			%% Time = xml:get_tag_attr_s("msgTime", Packet),
 			%% ?INFO_MSG("ERROR++++++++++++++++ Time=~p;~n~nPacket=~p",[Time,Packet]),
 			%% {ok,TimeStamp} = getTime(Time),
 			%% TODO 7天以后过期

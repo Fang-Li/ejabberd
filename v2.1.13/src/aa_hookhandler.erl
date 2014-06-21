@@ -154,7 +154,7 @@ send_offline_message(From ,To ,Packet,Type,MID,MsgType,N) when N < 3 ->
 		"groupchat" ->
 			{xmlelement,"message",Header,_ } = Packet,
 			D = dict:from_list(Header),
-			GroupID = dict:fetch("gid", D),
+			GroupID = dict:fetch("groupid", D),
 			list_to_binary(GroupID);
 		_ ->
 			<<"">>
@@ -163,7 +163,7 @@ send_offline_message(From ,To ,Packet,Type,MID,MsgType,N) when N < 3 ->
 		       {"service",Service},
 		       {"method",Method},
 		       {"channel",list_to_binary("9")},
-		       {"params",{obj,[{"msgtype",MType},{"fromname",FN},{"toname",TN},{"msg",MSG},{"type",T},{"id",MSG_ID},{"gid",Gid}]} } 
+		       {"params",{obj,[{"msgtype",MType},{"fromname",FN},{"toname",TN},{"msg",MSG},{"type",T},{"id",MSG_ID},{"groupid",Gid}]} } 
 		      ]},
 	Form = "body="++rfc4627:encode(ParamObj),
 	try
@@ -294,6 +294,8 @@ user_send_packet_handler(#jid{user=FU,server=FD}=From, To, Packet) ->
 						ack_task({new,SYNCID,From,To,Packet});
 					IS_GROUP_CHAT=:=false,ACK_FROM,MT=:="msgStatus" ->
 						KK = FU++"@"++FD++"/offline_msg",
+						%% TODO 在这里需要判断消息是否上过桥，如果上过则需要同步到对端
+						aa_bridge:ack(Domain,SYNCID),
 						gen_server:call(?MODULE,{ecache_cmd,["DEL",SYNCID]}),
 						gen_server:call(?MODULE,{ecache_cmd,["ZREM",KK,SYNCID]}),
 						?DEBUG("==> SYNC_RES ack => ACK_USER=~p ; ACK_ID=~p",[KK,SYNCID]),
@@ -453,23 +455,37 @@ ack_task({ack,ID})->
 ack_task({offline,ID})->
 	ack_task({do,offline,ID});
 ack_task({do,M,ID})->
+	?INFO_MSG("DO_ACK_TASK_ID=~p ; M=~p.",[ID,M]),
 	try
-		[{_,_,ResendPid}] = mnesia:dirty_read(dmsg,ID),
-		ResendPid!M 
+		OBJ = mnesia:dirty_read(dmsg,ID),
+		?DEBUG("DO_ACK_TASK_ID=~p ; M=~p ; OBJ=~p.",[ID,M,OBJ]),
+		case OBJ of
+			[{_,_,ResendPid}] ->
+				ResendPid!M;
+			_ ->
+				skip
+		end
 	catch 
-		_:_-> ack_err
+		_:_-> 
+			Error = erlang:get_stacktrace(),
+			?ERROR_MSG("DO_ACK_TASK_ID=~p ; M=~p ; ERROR=~p.",[ID,M,Error]),
+			ack_err
 	end.
-ack_task(ID,From,To,Packet)->
+ack_task(ID,#jid{server=Domain}=From,To,Packet)->
 	?INFO_MSG("ACK_TASK_~p ::::> START.",[ID]),
 	receive 
 		offline->
 			mnesia:dirty_delete(dmsg,ID),
 			?INFO_MSG("ACK_TASK_~p ::::> OFFLINE.",[ID]);
 		ack ->
+			%% 2014-06-18 : 当有消息 ACK 时，记得同步到桥上，如果开启了桥接功能
+			aa_bridge:ack(Domain,ID),
 			mnesia:dirty_delete(dmsg,ID),
 			?INFO_MSG("ACK_TASK_~p ::::> ACK.",[ID])
 	after ?TIME_OUT -> 
 		?INFO_MSG("ACK_TASK_~p ::::> AFTER",[ID]),
+		%% 2014-06-18 : 离线消息统统上桥,如果开启桥接模式
+		aa_bridge:route(Domain,Packet),	
 		mnesia:dirty_delete(dmsg,ID),
 		offline_message_hook_handler(From,To,Packet)
 	end.
