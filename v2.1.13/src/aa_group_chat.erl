@@ -34,8 +34,7 @@ start_link() ->
 route_group_msg(From,To,Packet)->
 	{ok,Pid} = start(),
 	?DEBUG("###### route_group_msg_001 ::::> {From,To,Packet}=~p",[{From,To,Packet}]),
-	gen_server:call(Pid,{route_group_msg,From,To,Packet}),
-	stop(Pid).
+	gen_server:cast(Pid,{route_group_msg,From,To,Packet}).
 
 %% {"service":"group_chat","method":"remove_user","params":{"domain":"test.com","gid":"123123","uid":"123123"}}
 %% "{\"method\":\"remove_user\",\"params\":{\"domain\":\"test.com\",\"gid\":\"123123\",\"uid\":\"123123\"}}"
@@ -93,7 +92,11 @@ init([]) ->
 	{ok,_,Node} = Conn,
 	{ok, #state{ecache_node=Node}}.
 
-handle_call({route_group_msg,#jid{server=Domain,user=FU}=From,#jid{user=GroupId}=To,Packet}, _From, State) ->
+handle_call({ecache_cmd,Cmd},_From, State) ->
+	?DEBUG("##### ecache_cmd_on_group_chat_mod :::> Cmd=~p",[Cmd]),
+	{reply,ecache_cmd(Cmd,State),State}.
+
+handle_cast({route_group_msg,#jid{server=Domain,user=FU}=From,#jid{user=GroupId}=To,Packet}, State) ->
 	%% 如果关闭组的cache那么就不保存组信息
 	Disable_group_cache =  ejabberd_config:get_local_option({disable_group_cache,Domain}),
 	Key = GroupId++"@group."++Domain,
@@ -144,12 +147,7 @@ handle_call({route_group_msg,#jid{server=Domain,user=FU}=From,#jid{user=GroupId}
 		_ ->
 			error
 	end,
-	{reply,[],State};
-handle_call({ecache_cmd,Cmd},_From, State) ->
-	?DEBUG("##### ecache_cmd_on_group_chat_mod :::> Cmd=~p",[Cmd]),
-	{reply,ecache_cmd(Cmd,State),State}.
-
-
+	{stop, normal, State};
 handle_cast(stop, State) ->
 	{stop, normal, State}.
 
