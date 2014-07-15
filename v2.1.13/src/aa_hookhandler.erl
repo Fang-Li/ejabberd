@@ -388,7 +388,57 @@ handle_call({sync_packet,K,From,To,Packet}, _F, #state{ecache_node=Node,ecache_m
 	aa_offline_mod:offline_message_hook_handler(From,To,RPacket),
 	log(RPacket),
 	{reply, R, State}.
+handle_cast({server_ack,#jid{user=FU,server=FD}=From,To,Packet},State)->
+	Domain = FD,
+	{_,"message",Attr,_} = Packet,
+	D = dict:from_list(Attr),
+	MT = case dict:is_key("msgtype",D) of true-> dict:fetch("msgtype",D); _-> "" end,
+	SRC_ID_STR = case dict:is_key("id", D) of true -> dict:fetch("id", D); _ -> "" end,
+	ACK_FROM = case ejabberd_config:get_local_option({ack_from ,Domain}) of 
+			   true -> true;
+			   _ -> false
+	end,
+	%% 一个标记，如果有值，则表示不需要 server_ack 回弹此消息
+	G = case dict:is_key("g", D) of true -> dict:fetch("g", D); _ -> true end,
+	?DEBUG("G=~p ; Packet=~p",[G,Packet]),
+	if G and ACK_FROM and ( (MT=:="normalchat") or (MT=:="groupchat") ) ->
+		   %% IS_GROUP_CHAT = aa_group_chat:is_group_chat(To),
+		   case dict:is_key("from", D) of 
+			   true -> 
+				   Attributes = [
+						 {"id",get_id()},
+						 {"to",dict:fetch("from", D)},
+						 {"from","messageack@"++Domain},
+						 {"type","normal"},
+						 {"msgtype",""},
+						 {"action","ack"}
+				   ],
+				   Child = [{xmlelement, "body", [], [
+						{xmlcdata, list_to_binary("{'src_id':'"++SRC_ID_STR++"','received':'true'}")}
+				   ]}],
+				   %%Answer = {xmlelement,"message",Attributes, []},
+				   Answer = {xmlelement, "message", Attributes , Child},
+				   FF = jlib:string_to_jid(xml:get_tag_attr_s("from", Answer)),
+				   TT = jlib:string_to_jid(xml:get_tag_attr_s("to", Answer)),
+				   ?DEBUG("Answer ::::> FF=~p ; TT=~p ; P=~p ", [FF,TT,Answer] ),
+				   case catch ejabberd_router:route(FF, TT, Answer) of
+					   ok -> 
+						   ?DEBUG("Answer ::::> ~p ", [ok] );
+					   _ERROR ->
+						   ?DEBUG("Answer ::::> error=~p ", [_ERROR] )
+				   end,
+				   answer;
+			   _ ->
+				   ?DEBUG("~p", [skip_01] ),
+				   skip
+		   end;
+	   true ->
+		   ?DEBUG("~p", [skip_02] ),
+		   skip
+	end,
+	{noreply, State};
 handle_cast(Msg, State) -> {noreply, State}.
+
 handle_info(Info, State) -> {noreply, State}.
 terminate(Reason, State) -> ok.
 code_change(OldVsn, State, Extra) -> {ok, State}.
@@ -494,55 +544,9 @@ ack_task(ID,#jid{server=Domain}=From,To,Packet)->
 	end.
 
 
-server_ack(#jid{user=FU,server=FD}=From,To,Packet)->
-	Domain = FD,
-	{_,"message",Attr,_} = Packet,
-	D = dict:from_list(Attr),
-	T = dict:fetch("type", D),
-	MT = case dict:is_key("msgtype",D) of true-> dict:fetch("msgtype",D); _-> "" end,
-	SRC_ID_STR = case dict:is_key("id", D) of true -> dict:fetch("id", D); _ -> "" end,
-	ACK_FROM = case ejabberd_config:get_local_option({ack_from ,Domain}) of 
-			   true -> true;
-			   _ -> false
-	end,
-	%% 一个标记，如果有值，则表示不需要 server_ack 回弹此消息
-	G = case dict:is_key("g", D) of true -> dict:fetch("g", D); _ -> true end,
-	?DEBUG("G=~p ; Packet=~p",[G,Packet]),
-	if G and ACK_FROM and ( (MT=:="normalchat") or (MT=:="groupchat") ) ->
-		   %% IS_GROUP_CHAT = aa_group_chat:is_group_chat(To),
-		   case dict:is_key("from", D) of 
-			   true -> 
-				   Attributes = [
-						 {"id",get_id()},
-						 {"to",dict:fetch("from", D)},
-						 {"from","messageack@"++Domain},
-						 {"type","normal"},
-						 {"msgtype",""},
-						 {"action","ack"}
-				   ],
-				   Child = [{xmlelement, "body", [], [
-						{xmlcdata, list_to_binary("{'src_id':'"++SRC_ID_STR++"','received':'true'}")}
-				   ]}],
-				   %%Answer = {xmlelement,"message",Attributes, []},
-				   Answer = {xmlelement, "message", Attributes , Child},
-				   FF = jlib:string_to_jid(xml:get_tag_attr_s("from", Answer)),
-				   TT = jlib:string_to_jid(xml:get_tag_attr_s("to", Answer)),
-				   ?DEBUG("Answer ::::> FF=~p ; TT=~p ; P=~p ", [FF,TT,Answer] ),
-				   case catch ejabberd_router:route(FF, TT, Answer) of
-					   ok -> 
-						   ?DEBUG("Answer ::::> ~p ", [ok] );
-					   _ERROR ->
-						   ?DEBUG("Answer ::::> error=~p ", [_ERROR] )
-				   end,
-				   answer;
-			   _ ->
-				   ?DEBUG("~p", [skip_01] ),
-				   skip
-		   end;
-	   true ->
-		   ?DEBUG("~p", [skip_02] ),
-		   skip
-	end.
+server_ack(From,To,Packet)->
+	gen_server:cast(?MODULE,{server_ack,From,To,Packet}).
+
 
 get_id()-> 
 	{M,S,SS} = now(), 
