@@ -14,9 +14,16 @@
 route(Domain,Packet)->
 	case ejabberd_config:get_local_option({emsg_bridge_enable,Domain}) of
 		true ->
-			route(do,Domain,Packet);
+			ID = xml:get_tag_attr_s("id", Packet),
+			case is_on_bridge(list_to_binary(ID),list_to_binary(Domain)) of
+				false ->
+					route(do,Domain,Packet);
+				true ->
+					?DEBUG("emsg_bridge_route_is_on_bridge_true skip",[]),
+					skip
+			end;
 		_->
-			?DEBUG("emsg_bridge_enable_false",[]),
+			?DEBUG("emsg_bridge_enable_false skip",[]),
 			skip
 	end.
 route(do,Domain,Packet)->
@@ -24,7 +31,7 @@ route(do,Domain,Packet)->
 		{ok,JsonPacket} = encode_json(Packet), 
 		{ok,Envelope} = dict:find(<<"envelope">>,dict:from_list(JsonPacket)),
 		{ok,ID} = dict:find(<<"id">>,dict:from_list(Envelope)),
-		?DEBUG("emsg_bridge_route ===> id=~p ; domain=~p~nPacket=~p~nJsonPacket=~p~n",[ID,Packet,JsonPacket]),
+		?DEBUG("emsg_bridge_route ===> id=~p ; domain=~p~nPacket=~p~nJsonPacket=~p~n",[ID,Domain,Packet,JsonPacket]),
 		HTTPTarget = case ejabberd_config:get_local_option({emsg_bridge_url,Domain}) of
 			undefined ->
 				?DEF_EMSG_BRIDGE_URL;
@@ -71,7 +78,8 @@ route(do,Domain,Packet)->
 			{error,Err}
 	end.
 
-ack(Domain,ID)->
+ack(Domain,IDF)->
+	[ID|_] = string:tokens(IDF,"@"),
 	case ejabberd_config:get_local_option({emsg_bridge_enable,Domain}) of
 		true ->
 			case is_on_bridge(list_to_binary(ID),list_to_binary(Domain)) of
@@ -139,7 +147,36 @@ ack(do,Domain,ID)->
 %%% 接收自桥的 API
 %%%===================================================================
 route(Body) ->
-	ok.
+	DBody = rfc4627:decode(Body),
+	case DBody of
+		{ok,Obj,_Re} -> 
+			case rfc4627:get_field(Obj,"params") of
+				{ok,Params} ->
+					{ok,Packet} = rfc4627:get_field(Params,"packet"),
+					{ok,Domain} = rfc4627:get_field(Params,"domain"),
+					?DEBUG("emsg_bridge_route_recv domain=~p ; packet=~p",[Domain,Packet]),
+					SPacket = rfc4627:encode(Packet),
+					{ok,XmlPacket} = decode_json(SPacket),
+					?DEBUG("emsg_bridge_route_recv domain=~p ; xml_packet=~p",[Domain,XmlPacket]),
+				    ID = xml:get_tag_attr_s("id", XmlPacket),
+				    From = jlib:string_to_jid(xml:get_tag_attr_s("from", XmlPacket)),
+				    To = jlib:string_to_jid(xml:get_tag_attr_s("to", XmlPacket)),
+					?DEBUG("emsg_bridge_route_recv id=~p ; from=~p ; to=~p",[ID,From,To]),
+					case ejabberd_router:route(From, To, XmlPacket) of
+					    ok ->
+							put_on_bridge(list_to_binary(ID),Domain),
+							aa_hookhandler:user_send_packet_handler(From,To,XmlPacket);
+					    RouteExcept -> 
+							?ERROR_MSG("[ERROR] emsg_bridge_route_recv_send_error ~p",[RouteExcept]) 
+					end;
+				Other ->
+					?DEBUG("emsg_bridge_route_recv=~p",[Other]),
+					fail 
+			end;
+		Error -> 
+			?ERROR_MSG("[ERROR] cause ~p~n",[Error]),
+			error
+	end.
 
 ack(Body) ->
 	DBody = rfc4627:decode(Body),
@@ -149,6 +186,7 @@ ack(Body) ->
 				{ok,Params} ->
 					{ok,ID} = rfc4627:get_field(Params,"id"),
 					{ok,Domain} = rfc4627:get_field(Params,"domain"),
+					del_on_bridge(ID,Domain),
 					Key = binary_to_list(ID)++"@"++binary_to_list(Domain),
 					?DEBUG("emsg_bridge_ack_recv id=~p ; domain=~p ; key=~p",[ID,Domain,Key]),
 					gen_server:call(aa_hookhandler,{ecache_cmd,["DEL",Key]}),
@@ -194,10 +232,10 @@ is_on_bridge(ID,Domain)->
     Bridge_key = binary_to_list(ID)++"@bridge."++binary_to_list(Domain),
     ?DEBUG("is_on_bridge key=~p",[Bridge_key]),
 	case gen_server:call(aa_hookhandler,{ecache_cmd,["GET",Bridge_key]}) of
-        {ok,undefined} ->
+        undefined ->
     		?DEBUG("is_on_bridge id=~p ; res=~p",[ID,undefined]),
             false;
-        {ok,V} ->
+        [V] ->
             ?DEBUG("is_on_bridge id=~p ; res=~p",[ID,V]),
             true;
         Obj ->

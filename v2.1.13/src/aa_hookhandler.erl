@@ -8,7 +8,7 @@
 -define(HTTP_HEAD,"application/x-www-form-urlencoded").
 -define(TIME_OUT,1000*5).
 
--export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3,get_id/0]).
 
 %% ====================================================================
 %% API functions
@@ -177,9 +177,11 @@ send_offline_message(From ,To ,Packet,Type,MID,MsgType,N) when N < 3 ->
 								{ok,Entity} = rfc4627:get_field(Obj,"entity"),
 								?ERROR_MSG("liangc-push-msg error: ~p~n",[binary_to_list(Entity)]);
 							_ ->
-								false
+								?INFO_MSG("liangc_push_offline_ok_id=~p ; Obj=~p",[MID,Obj]),
+								ok
 						end;
-					_ -> 
+					Other -> 
+						?ERROR_MSG("liangc_push_msg_error_id=~p ; Other=~p",[MID,Other]),
 						false
 				end ;
 			{error, Reason} ->
@@ -449,7 +451,10 @@ log(Packet) ->
 
 ack_task({new,ID,From,To,Packet})->
 	TPid = erlang:spawn(fun()-> ack_task(ID,From,To,Packet) end),
-	mnesia:dirty_write(dmsg,#dmsg{mid=ID,pid=TPid});
+	?DEBUG("ack_task_new ~p",[{ID,From,To,Packet,TPid}]),
+	Dmsg = #dmsg{mid=ID,pid=TPid},
+	RTN = mnesia:dirty_write(dmsg,Dmsg),
+	?DEBUG("ack_task_new_rtn=~p ; dmsg=~p",[RTN,Dmsg]);
 ack_task({ack,ID})->
 	ack_task({do,ack,ID});
 ack_task({offline,ID})->
@@ -478,8 +483,6 @@ ack_task(ID,#jid{server=Domain}=From,To,Packet)->
 			mnesia:dirty_delete(dmsg,ID),
 			?INFO_MSG("ACK_TASK_~p ::::> OFFLINE.",[ID]);
 		ack ->
-			%% 2014-06-18 : 当有消息 ACK 时，记得同步到桥上，如果开启了桥接功能
-			aa_bridge:ack(Domain,ID),
 			mnesia:dirty_delete(dmsg,ID),
 			?INFO_MSG("ACK_TASK_~p ::::> ACK.",[ID])
 	after ?TIME_OUT -> 
@@ -510,7 +513,7 @@ server_ack(#jid{user=FU,server=FD}=From,To,Packet)->
 		   case dict:is_key("from", D) of 
 			   true -> 
 				   Attributes = [
-						 {"id",os:cmd("uuidgen")--"\n"},
+						 {"id",get_id()},
 						 {"to",dict:fetch("from", D)},
 						 {"from","messageack@"++Domain},
 						 {"type","normal"},
@@ -540,3 +543,7 @@ server_ack(#jid{user=FU,server=FD}=From,To,Packet)->
 		   ?DEBUG("~p", [skip_02] ),
 		   skip
 	end.
+
+get_id()-> 
+	{M,S,SS} = now(), 
+	atom_to_list(node())++"_"++integer_to_list(M)++integer_to_list(S)++integer_to_list(SS).

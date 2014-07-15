@@ -175,7 +175,7 @@ get_user_list_by_group_id(Domain,GroupId)->
 			list_to_binary("service.groupchat"),
 			list_to_binary("getUserList"),
 			list_to_binary(GroupId),
-			list_to_binary(os:cmd("uuidgen")--"\n")
+			list_to_binary(aa_hookhandler:get_id())
 	},
 	ParamObj={obj,[ {"sn",SN},{"service",Service},{"method",Method},{"params",{obj,[{"groupId",GID}]} } ]},
 	Form = "body="++rfc4627:encode(ParamObj),
@@ -214,7 +214,7 @@ route_msg(#jid{user=FromUser}=From,#jid{user=User,server=Domain}=To,Packet,Group
 	case FromUser=/=User of
 		true->
 			{X,E,Attr,Body} = Packet,
-			ID = os:cmd("uuidgen")--"\n",
+			ID = aa_hookhandler:get_id(),
 			?DEBUG("##### route_group_msg_003 param :::> {User,Domain,GroupId}=~p",[{User,Domain,GroupId}]),
 			RAttr0 = lists:map(fun({K,V})-> 
 				case K of 

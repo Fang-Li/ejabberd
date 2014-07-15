@@ -118,6 +118,14 @@ handle_call({handle_http,Req}, _From, State) ->
 					_ ->
 						http_response({#success{success=false,entity=list_to_binary("method undifine")},Req})
 				end;
+			"route" ->
+				case rfc4627:get_field(Obj, "service") of
+					{ok,<<"emsg_bridge">>} ->
+						Result = aa_bridge:route(Body),
+						http_response({#success{success=true,entity=Result},Req});
+					_ ->
+						http_response({#success{success=false,entity=list_to_binary("method undifine")},Req})
+				end;
 			_ ->
 				http_response({#success{success=false,entity=list_to_binary("method undifine")},Req})
 		end
