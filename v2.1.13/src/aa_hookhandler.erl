@@ -165,7 +165,7 @@ send_offline_message(From ,To ,Packet,Type,MID,MsgType,N) when N < 3 ->
 		       {"channel",list_to_binary("9")},
 		       {"params",{obj,[{"msgtype",MType},{"fromname",FN},{"toname",TN},{"msg",MSG},{"type",T},{"id",MSG_ID},{"groupid",Gid}]} } 
 		      ]},
-	Form = "body="++rfc4627:encode(ParamObj),
+	Form = "body="++http_uri:encode( rfc4627:encode(ParamObj) ),
 	try
 		?DEBUG("MMMMMMMMMMMMMMMMM===Form=~p~n",[Form]),
 		case httpc:request(post,{ HTTPTarget ,[], ?HTTP_HEAD , Form },[],[] ) of   
